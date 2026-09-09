@@ -1,5 +1,5 @@
 --[[===========================================================================
-    STALKER // Security Test Harness  v1.4 (resizable window: drag corner grip, + to maximize)
+    STALKER // Security Test Harness  v1.5 (resizable window: drag corner grip, + to maximize)
     ---------------------------------------------------------------------------
     WHAT: In-game GUI to test every finding in SECURITY_AUDIT.md against a
           LIVE server. Fires the same remotes an exploiter would, then shows
@@ -306,14 +306,19 @@ end
 -- Consumable allowlist for USE-spam tests (D3a/D3b). Firing UseItem at a
 -- NON-usable item (ammo box, mag) consumes nothing and proves nothing, so
 -- these tests auto-prefer a consumable and fall back to the picked item.
-local CONSUMABLE_HINTS = {"bread", "medkit", "ai-2", "ai2", "dressing", "bandage",
-    "iodine", "peroxide", "canned", "ration", "sausage", "vodka", "beans",
-    "water", "antirad", "syringe", "morphine", "splint", "charcoal", "tourniquet"}
+local FOOD_HINTS = {"bread", "canned", "ration", "sausage", "beans", "water",
+    "vodka", "tourist", "delight", "meat", "soup", "mre"}
+local MED_HINTS = {"medkit", "ai-2", "ai2", "dressing", "bandage", "iodine",
+    "peroxide", "antirad", "syringe", "morphine", "splint", "charcoal", "tourniquet"}
+-- Food first: meds are condition-gated (no-op at full HP / no bleed), so a
+-- medkit at 100 HP consumes 0 and proves nothing. Food is the honest target.
 local function findConsumable()
-    for _, e in ipairs(CTX.invItems) do
-        local idl = string.lower(e.ID)
-        for _, h in ipairs(CONSUMABLE_HINTS) do
-            if string.find(idl, h, 1, true) then return e end
+    for _, hints in ipairs({FOOD_HINTS, MED_HINTS}) do
+        for _, e in ipairs(CTX.invItems) do
+            local idl = string.lower(e.ID)
+            for _, h in ipairs(hints) do
+                if string.find(idl, h, 1, true) then return e end
+            end
         end
     end
     return nil
@@ -358,7 +363,7 @@ local function buildGUI()
         BorderSizePixel = 0, Active = true}, main)
     mk("UICorner", {CornerRadius = UDim.new(0, 8)}, top)
     mk("TextLabel", {Size = UDim2.new(1, -270, 1, 0), Position = UDim2.fromOffset(12, 0),
-        BackgroundTransparency = 1, Text = "STALKER // SECURITY TEST HARNESS  v1.4",
+        BackgroundTransparency = 1, Text = "STALKER // SECURITY TEST HARNESS  v1.5",
         Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = ACCENT,
         TextXAlignment = Enum.TextXAlignment.Left}, top)
     local safeBtn = mk("TextButton", {Size = UDim2.fromOffset(140, 26), Position = UDim2.new(1, -246, 0.5, -13),
@@ -1102,7 +1107,7 @@ addTest("DUPES", "D3a", "UseItem x25 SAME FRAME (multi-use?)", "caution", functi
     task.wait(1.5); refreshInventory()
     local after = countItem(id)
     log("INFO", string.format("%s count %d -> %d (consumed %d, want 1)", id, before, after, before - after))
-    if before - after <= 0 then return "INFO", "nothing consumed - item may not be usable / already gone" end
+    if before - after <= 0 then return "INFO", "nothing consumed - meds need missing HP, food may need hunger. Create the condition, then re-run." end
     if before - after == 1 then return "PASS", "exactly 1 consumed" end
     return "FAIL", "consumed " .. (before - after) .. "x but FIRED 25 uses - multi-use dupe!"
 end)
@@ -1684,7 +1689,7 @@ end)
 do
     local n = 0
     for _ in pairs(TESTS or {}) do n = n + 1 end
-    log("INFO", "STALKER security harness v1.4 loaded. Safe mode ON. Run on NON-ADMIN alt!")
+    log("INFO", "STALKER security harness v1.5 loaded. Safe mode ON. Run on NON-ADMIN alt!")
     log("INFO", "Registered " .. n .. " tests (expect 53 - if less, re-copy the WHOLE Raw file).")
     log("INFO", "Follow the START tab: 1) SETUP -> S0 Refresh + pick junk, 2) RUN PRIORITY SUITE.")
 end
