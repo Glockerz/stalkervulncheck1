@@ -1,5 +1,5 @@
 --[[===========================================================================
-    STALKER // Security Test Harness  v1.9 (resizable window: drag corner grip, + to maximize)
+    STALKER // Security Test Harness  v1.10 (resizable window: drag corner grip, + to maximize)
     ---------------------------------------------------------------------------
     WHAT: In-game GUI to test every finding in SECURITY_AUDIT.md against a
           LIVE server. Fires the same remotes an exploiter would, then shows
@@ -282,25 +282,47 @@ local function refreshAI()
     for _, d in ipairs(workspace:GetDescendants()) do
         if d:IsA("Model") and not chars[d] and not traders[d] then
             local nl = string.lower(d.Name)
-            -- skip quest corpses / decorative bodies (MT_*_Body etc.)
+            -- skip corpses, dummies, target props (MT_*_Body, Scale Dummy, ...)
             local isProp = string.find(nl, "dead", 1, true) or string.find(nl, "body", 1, true)
                 or string.find(nl, "corpse", 1, true) or string.find(nl, "ragdoll", 1, true)
+                or string.find(nl, "dummy", 1, true) or string.find(nl, "target", 1, true)
+                or string.find(nl, "mannequin", 1, true)
             if not isProp then
                 local hum = d:FindFirstChildOfClass("Humanoid")
                 local head = d:FindFirstChild("Head")
                 if hum and head and hum.Health > 0 then
                     table.insert(CTX.aitargets, d)
-                    if #CTX.aitargets >= 30 then break end
+                    if #CTX.aitargets >= 200 then break end
                 end
             end
         end
     end
+    -- nearest first: the default pick is always the closest hostile
+    pcall(function()
+        local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if root then
+            table.sort(CTX.aitargets, function(a, b)
+                local pa, pb = nil, nil
+                pcall(function()
+                    pa = (a:FindFirstChild("Head").Position - root.Position).Magnitude
+                    pb = (b:FindFirstChild("Head").Position - root.Position).Magnitude
+                end)
+                return (pa or 1e9) < (pb or 1e9)
+            end)
+        end
+    end)
+    while #CTX.aitargets > 30 do table.remove(CTX.aitargets) end
     CTX.aiSel = 1
-    log("INFO", "Hostile AI candidates: " .. tostring(#CTX.aitargets) .. " (players+traders excluded - verify in dropdown)")
+    log("INFO", "Hostile AI candidates: " .. tostring(#CTX.aitargets) .. " (nearest first, d=studs)")
     for i, m in ipairs(CTX.aitargets) do
         if i <= 10 then
             local hum = m:FindFirstChildOfClass("Humanoid")
-            log("INFO", "  [AI" .. i .. "] " .. m:GetFullName() .. " hp=" .. (hum and math.floor(hum.Health) or "?"))
+            local dist = "?"
+            pcall(function()
+                local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                dist = string.format("%.0f", (m:FindFirstChild("Head").Position - root.Position).Magnitude)
+            end)
+            log("INFO", "  [AI" .. i .. "] " .. m:GetFullName() .. " hp=" .. (hum and math.floor(hum.Health) or "?") .. " d=" .. dist)
         end
     end
     if #CTX.aitargets == 0 then
@@ -402,7 +424,7 @@ local function buildGUI()
         BorderSizePixel = 0, Active = true}, main)
     mk("UICorner", {CornerRadius = UDim.new(0, 8)}, top)
     mk("TextLabel", {Size = UDim2.new(1, -270, 1, 0), Position = UDim2.fromOffset(12, 0),
-        BackgroundTransparency = 1, Text = "STALKER // SECURITY TEST HARNESS  v1.9",
+        BackgroundTransparency = 1, Text = "STALKER // SECURITY TEST HARNESS  v1.10",
         Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = ACCENT,
         TextXAlignment = Enum.TextXAlignment.Left}, top)
     local safeBtn = mk("TextButton", {Size = UDim2.fromOffset(140, 26), Position = UDim2.new(1, -246, 0.5, -13),
@@ -1508,6 +1530,13 @@ addTest("COMBAT", "G2", "Pin Chambered+AUTO 15s (YOU mag-dump victim)", "caution
     if not head or isSelf then
         return "INFO", "pick a victim first (HOSTILE AI toggle + SETUP picker)"
     end
+    local vdist = 0
+    pcall(function()
+        vdist = (LocalPlayer.Character.HumanoidRootPart.Position - head.Position).Magnitude
+    end)
+    if vdist > 500 then
+        return "INFO", "victim is " .. string.format("%.0f", vdist) .. "m away - walk CLOSE to it, then re-run"
+    end
     log("INFO", string.format("gun=%s Mag=%s Chambered=%s(%s) FireMode=%s(%s) victim=%s",
         gun.Name, tostring(m0), short(chamber.Value), chamber.ClassName,
         short(fmode.Value), fmode.ClassName, vname))
@@ -1611,6 +1640,7 @@ addTest("COMBAT", "C4c", "PlayerFire 10x no reload (ammo honesty)", "caution", f
     log("INFO", string.format("MagAmmo %s -> %s after 10 forced fires", tostring(m0), tostring(m1)))
     if m0 < 0 then return "INFO", "could not read mag" end
     local want = math.min(10, m0)
+    if want == 0 then return "INFO", "mag is EMPTY - reload first (firing air proves nothing)" end
     if m0 - m1 >= want then return "PASS", "server decremented per shot (" .. (m0-m1) .. "/" .. want .. ")" end
     return "INFO", "decremented " .. (m0-m1) .. "/" .. want .. " - investigate"
 end)
@@ -1833,7 +1863,7 @@ end)
 do
     local n = 0
     for _ in pairs(TESTS or {}) do n = n + 1 end
-    log("INFO", "STALKER security harness v1.9 loaded. Safe mode ON. Run on NON-ADMIN alt!")
+    log("INFO", "STALKER security harness v1.10 loaded. Safe mode ON. Run on NON-ADMIN alt!")
     log("INFO", "Registered " .. n .. " tests (expect 54 - if less, re-copy the WHOLE Raw file).")
     log("INFO", "Follow the START tab: 1) SETUP -> S0 Refresh + pick junk, 2) RUN PRIORITY SUITE.")
 end

@@ -465,3 +465,14 @@ run G2: it pins Chambered=true + FireMode=2 for 15s (auto-clicker included) whil
 you hold the trigger on the victim, then snapshots victim HP. HP dropped from an
 EMPTY mag = CONFIRMED server-side. Next after confirm: spy which remote carries
 each shot, then patch = server-owned ammo/chamber per player.
+
+### L2. Gun fire-pipeline state is client-side (recon only) - harness G1 dump
+**Observed on Makarov (all client-writable):** attributes `CurrentMagRounds`,
+`LoadedRounds` (the actual round list!), `CurrentMagType`, `ReloadLockUntil`,
+`ReloadedAt`, `_AutoChamberPending`, `MagAmmoWatched`, `SlotType`; Values
+`Chambered` (bool), `FireMode` (int, 1=semi), `BoltReady` (bool).
+**Why it matters:** if fire/consume/reload logic reads any of this from the client
+(or the server mirrors it without checks), each is a pin/spoof target:
+`LoadedRounds` (never-empty mag), `ReloadLockUntil` (instant reload),
+`_AutoChamberPending` / `BoltReady` (cycle skips). Next: G2 verdict on L1 first;
+if the server rejects pinned-chamber shots, probe `LoadedRounds` the same way.
