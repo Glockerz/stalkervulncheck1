@@ -442,3 +442,22 @@ ground truth for every item above — treat each as "must verify," not "confirme
 broken." If you can share the server-side handlers (even just the inventory,
 trader, combat, and admin modules), I can confirm each finding precisely and
 write the patches.*
+
+---
+
+## LIVE CONFIRMATIONS (in-game harness runs, 2026-09-09)
+
+> Observed against a LIVE server with TEST_HARNESS.lua. UNVERIFIED items were
+> reported but still need the server-side-effect proof described beside them.
+
+### L1. Chamber flag + firemode are client-writable (UNVERIFIED) - user-reported
+**Report:** forcing the gun's chamber flag to always-ON yields infinite ammo;
+setting firemode to `2` forces fully-automatic fire.
+**Why it matters:** if the server accepts shots/ammo derived from these
+client-side values, this is CRITICAL (infinite full-auto). Relates to C4
+(ModTable trust), C6 (ammo authority), M1 (weapon-state bridges).
+**To confirm (rules out visual-only):** G0 (note real Mag/Reserve) -> pin
+chamber=true, firemode=2 -> mag-dump at a HostileNPC counting rounds past
+Mag+Reserve. CONFIRMED iff damage continues past the real ammo total or the
+mag never decrements while kills land. Then G1-dump the flag names and spy
+which remote carries them, for the patch.

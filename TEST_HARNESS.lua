@@ -1,5 +1,5 @@
 --[[===========================================================================
-    STALKER // Security Test Harness  v1.7 (resizable window: drag corner grip, + to maximize)
+    STALKER // Security Test Harness  v1.8 (resizable window: drag corner grip, + to maximize)
     ---------------------------------------------------------------------------
     WHAT: In-game GUI to test every finding in SECURITY_AUDIT.md against a
           LIVE server. Fires the same remotes an exploiter would, then shows
@@ -402,7 +402,7 @@ local function buildGUI()
         BorderSizePixel = 0, Active = true}, main)
     mk("UICorner", {CornerRadius = UDim.new(0, 8)}, top)
     mk("TextLabel", {Size = UDim2.new(1, -270, 1, 0), Position = UDim2.fromOffset(12, 0),
-        BackgroundTransparency = 1, Text = "STALKER // SECURITY TEST HARNESS  v1.7",
+        BackgroundTransparency = 1, Text = "STALKER // SECURITY TEST HARNESS  v1.8",
         Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = ACCENT,
         TextXAlignment = Enum.TextXAlignment.Left}, top)
     local safeBtn = mk("TextButton", {Size = UDim2.fromOffset(140, 26), Position = UDim2.new(1, -246, 0.5, -13),
@@ -590,6 +590,7 @@ local DESCRIPTIONS = {
     E2 = "Tries to wear a skin you do NOT own (typed below). Applied = FAIL.",
     E3 = "ONE-TIME faction pack pick! A non-veteran receiving it = FAIL.",
     G0 = "Shows your equipped gun and its ammo. Read-only, changes nothing.",
+    G1 = "Dumps every flag inside your gun to find chamber + firemode. Paste the dump.",
     C4a = "Shoots your victim (ALT or hostile AI) in the head, 9999 dmg. STAND FAR / BEHIND A WALL!",
     C4b = "Hits your victim 30 times instantly. Full 30x damage = no rate limit.",
     C4c = "Forces 10 shots without reloading. Server must subtract ammo every shot.",
@@ -1461,6 +1462,32 @@ addTest("COMBAT", "G0", "Inspect equipped gun + ammo", "safe", function()
     return "INFO", "done"
 end)
 
+addTest("COMBAT", "G1", "Dump gun internals (chamber/firemode hunt)", "safe", function()
+    local gun = findGun()
+    if not gun then return "INFO", "equip a gun first" end
+    log("INFO", "gun=" .. gun:GetFullName())
+    local ok, attrs = pcall(function() return gun:GetAttributes() end)
+    if ok and type(attrs) == "table" then
+        for k, v in pairs(attrs) do
+            log("INFO", "  attr " .. tostring(k) .. " = " .. short(v, 60))
+        end
+    end
+    for _, d in ipairs(gun:GetDescendants()) do
+        if d:IsA("BoolValue") or d:IsA("IntValue") or d:IsA("NumberValue")
+            or d:IsA("StringValue") or d:IsA("ObjectValue") then
+            local nl = string.lower(d.Name)
+            local suspect = string.find(nl, "chamber", 1, true) or string.find(nl, "firemode", 1, true)
+                or string.find(nl, "fire mode", 1, true) or string.find(nl, "mode", 1, true)
+                or string.find(nl, "auto", 1, true) or string.find(nl, "ammo", 1, true)
+            local val = "?"
+            pcall(function() val = tostring(d.Value) end)
+            log("INFO", "  " .. d.ClassName .. " " .. d.Name .. " = " .. short(val, 60)
+                .. (suspect and "  <== SUSPECT" or ""))
+        end
+    end
+    return "INFO", "paste this dump - chamber/firemode names exposed above"
+end)
+
 local evilMod = {
     damage = {Head = 9999, Torso = 9999, Other = 9999},
     fireRate = 0.01, muzzleVelocity = 99999,
@@ -1750,8 +1777,8 @@ end)
 do
     local n = 0
     for _ in pairs(TESTS or {}) do n = n + 1 end
-    log("INFO", "STALKER security harness v1.7 loaded. Safe mode ON. Run on NON-ADMIN alt!")
-    log("INFO", "Registered " .. n .. " tests (expect 52 - if less, re-copy the WHOLE Raw file).")
+    log("INFO", "STALKER security harness v1.8 loaded. Safe mode ON. Run on NON-ADMIN alt!")
+    log("INFO", "Registered " .. n .. " tests (expect 53 - if less, re-copy the WHOLE Raw file).")
     log("INFO", "Follow the START tab: 1) SETUP -> S0 Refresh + pick junk, 2) RUN PRIORITY SUITE.")
 end
 log("WARN", "DANGER (red) tests are blocked until you toggle SAFE MODE off.")
