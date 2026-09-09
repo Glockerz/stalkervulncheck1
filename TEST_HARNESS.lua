@@ -1352,5 +1352,3 @@ task.spawn(function()
     pcall(refreshBalance)
     pcall(refreshPlayers)
 end)
-
-...[truncated 6177 chars]
