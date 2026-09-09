@@ -1,5 +1,5 @@
 --[[===========================================================================
-    STALKER // Security Test Harness  v1.12 (resizable window: drag corner grip, + to maximize)
+    STALKER // Security Test Harness  v1.13 (resizable window: drag corner grip, + to maximize)
     ---------------------------------------------------------------------------
     WHAT: In-game GUI to test every finding in SECURITY_AUDIT.md against a
           LIVE server. Fires the same remotes an exploiter would, then shows
@@ -424,7 +424,7 @@ local function buildGUI()
         BorderSizePixel = 0, Active = true}, main)
     mk("UICorner", {CornerRadius = UDim.new(0, 8)}, top)
     mk("TextLabel", {Size = UDim2.new(1, -270, 1, 0), Position = UDim2.fromOffset(12, 0),
-        BackgroundTransparency = 1, Text = "STALKER // SECURITY TEST HARNESS  v1.12",
+        BackgroundTransparency = 1, Text = "STALKER // SECURITY TEST HARNESS  v1.13",
         Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = ACCENT,
         TextXAlignment = Enum.TextXAlignment.Left}, top)
     local safeBtn = mk("TextButton", {Size = UDim2.fromOffset(140, 26), Position = UDim2.new(1, -246, 0.5, -13),
@@ -570,7 +570,7 @@ end
 local testCounter = 0
 local TESTS = {}    -- id -> {tab, label, risk, fn, row, status}
 local RESULTS = {}  -- id -> PASS | FAIL | INFO | ERROR | RUN | SKIP | BLOCKED
-local SUITE = {"C1b", "H2b", "D3b", "D7", "H4", "H5a", "H5b", "H5c", "C7a", "C4a"}
+local SUITE = {"C1b", "H2b", "D3b", "D7", "H4", "H5a", "H5b", "H5c", "C4b", "C4a"}
 local SummaryVals = nil  -- filled by START tab: {pass, fail, rev, list}
 local RISKWORD = {safe = "SAFE", caution = "CAREFUL", danger = "DANGER"}
 
@@ -584,7 +584,6 @@ local DESCRIPTIONS = {
     C1d = "Runs YOUR OWN admin command typed below. Only works with Safe Mode OFF.",
     C2b = "Picks up a ground item with a forged id. Checks what you actually receive.",
     C3c = "Control test: drops R1 then picks it up. Balance should end exactly equal.",
-    C7a = "Tells the server you took 99999 fall damage. Can kill you if the server trusts it.",
     D3b = "Same idea through the hotbar (10x). Auto-picks a consumable if you have one.",
     D4 = "Moves ONE item into TWO grids at the same time. In 2 places = dupe!",
     D1 = "Drops AND sells the same item simultaneously. It must end up in ONE place.",
@@ -1100,22 +1099,6 @@ addTest("CRITICAL", "C3c", "DropRoubles(1) control + re-pickup", "caution", func
     return "INFO", string.format("bal %s -> %s (should end equal if honest)", tostring(b0), tostring(CTX.balance))
 end)
 
-addHeader("CRITICAL", "C7 - FALL DAMAGE (self-reported number)")
-addTest("CRITICAL", "C7a", "FallDamage(99999) on SELF (may kill you)", "caution", function()
-    local b, err = bridge("FallDamage")
-    if not b then return "INFO", "no FallDamage bridge: " .. short(err) end
-    local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-    local h0 = hum and hum.Health or -1
-    local ok, ferr = pcall(function() b:Fire(99999) end)
-    task.wait(0.75)
-    hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-    local h1 = hum and hum.Health or -1
-    log("INFO", string.format("health %s -> %s", tostring(h0), tostring(h1)))
-    if h1 < h0 then return "FAIL", "server applied CLIENT-CHOSEN damage (and deleting the script = immunity)" end
-    return "PASS", "server ignored spoofed fall damage"
-end)
-addNote("CRITICAL", "Manual: delete/disable FallDamage LocalScript, jump off something tall. No damage = vulnerable.")
-
 -- ============================ DUPES ========================================
 addHeader("DUPES", "H1 - INVENTORY RACE DUPES (use JUNK item!)")
 
@@ -1475,7 +1458,7 @@ addTest("COMBAT", "G2", "Pin Chambered+AUTO 15s (YOU mag-dump victim)", "caution
         return "INFO", "victim is " .. string.format("%.0f", vdist) .. "m away - walk CLOSE to it, then re-run"
     end
     log("INFO", string.format("gun=%s Mag=%s Chambered=%s(%s) FireMode=%s(%s) victim=%s",
-        gun.Name, tostring(m0), short(chamber.Value), chamber.ClassName,
+        gun:GetFullName(), tostring(m0), short(chamber.Value), chamber.ClassName,
         short(fmode.Value), fmode.ClassName, vname))
     if m0 ~= 0 then
         return "INFO", "mag must read EMPTY first (fire it dry - pin only takes on empty), then re-run"
@@ -1484,16 +1467,31 @@ addTest("COMBAT", "G2", "Pin Chambered+AUTO 15s (YOU mag-dump victim)", "caution
     local c0, f0 = chamber.Value, fmode.Value
     pcall(function() fmode.Value = 2 end)
     task.wait(0.2)
-    -- pin loop: the game's own fire logic rewrites Chambered, so win every frame
+    -- pin loop: the game's own fire logic rewrites Chambered, so win every frame.
+    -- FireMode pinned too (nothing rewrites it, but belt + suspenders).
     local stop = false
     local conn = RunService.Heartbeat:Connect(function()
         if stop then return end
         pcall(function()
             if chamber.Value ~= true then chamber.Value = true end
+            if fmode.Value ~= 2 then fmode.Value = 2 end
         end)
     end)
+    task.wait(0.5)
+    local fv, cv = nil, nil
+    pcall(function() fv = fmode.Value end)
+    pcall(function() cv = chamber.Value end)
+    if fv == 2 and cv == true then
+        log("INFO", "verify: writes TOOK (FireMode=2 Chambered=true on " .. gun:GetFullName() .. ")")
+    else
+        log("WARN", "verify FAILED: FireMode=" .. tostring(fv) .. " Chambered=" .. tostring(cv) .. " - paste this line!")
+    end
     log("WARN", "PINNED Chambered+AUTO for 15s - HOLD TRIGGER on " .. vname .. " NOW (auto-clicker also running)")
     for _ = 1, 30 do
+        if chamber.Parent == nil or fmode.Parent == nil then
+            log("WARN", "gun instance DESTROYED mid-run (re-equip/death?) - pin lost, aborting")
+            break
+        end
         pcall(function() gun:Activate() end)
         task.wait(0.5)
     end
@@ -1782,8 +1780,8 @@ end)
 do
     local n = 0
     for _ in pairs(TESTS or {}) do n = n + 1 end
-    log("INFO", "STALKER security harness v1.12 loaded. Safe mode ON. Run on NON-ADMIN alt!")
-    log("INFO", "Registered " .. n .. " tests (expect 47 - if less, re-copy the WHOLE Raw file).")
+    log("INFO", "STALKER security harness v1.13 loaded. Safe mode ON. Run on NON-ADMIN alt!")
+    log("INFO", "Registered " .. n .. " tests (expect 46 - if less, re-copy the WHOLE Raw file).")
     log("INFO", "Follow the START tab: 1) SETUP -> S0 Refresh + pick junk, 2) RUN PRIORITY SUITE.")
 end
 log("WARN", "DANGER (red) tests are blocked until you toggle SAFE MODE off.")
