@@ -500,14 +500,14 @@ if the server rejects pinned-chamber shots, probe `LoadedRounds` the same way.
 
 ### Cleared live (stripped from the harness - these exploits do NOT work)
 Bar for clearing: deterministic PASS across repeated live runs + sound verdict
-logic. Removed from TEST_HARNESS.lua v1.12 to keep the tool focused on open
-questions (suite v2 = C1b, H2b, D3b, D7, H4, H5a, H5b, H5c, C7a, C4a).
+logic. Removed from TEST_HARNESS.lua v1.12-v1.13 to keep the tool focused on open
+questions (suite v2 = C1b, H2b, D3b, D7, H4, H5a, H5b, H5c, C4b, C4a).
 - **C1a** AdminListItems probe: `ok=true res={}` across 4 runs - gated for non-admin.
 - **C3a / C3b** negative + unfunded DropRoubles: balance untouched across 3 runs.
 - **C2a** forged DropItem id: ignored/rejected across 3 runs (nothing spawned).
 - **H2a** BuyBulk qty=-1: `bought=0, totalCost=0` across 3 runs.
 - **D3a** UseItem x25 (Bread): exactly 1 consumed - use-spam safe.
+- **C7a** spoofed FallDamage(99999): ignored (100->100) across 3 runs. (Row + manual omission note removed per owner request v1.13.)
 - **H6** SprintState while stationary: no stamina drain across 2 runs.
-Deliberately KEPT despite passing: C7a (spoof dead, but delete-the-script omission
-retest still open), H4 (needs a fresh account to be conclusive), C4c + G2 (L1
+Deliberately KEPT despite passing: H4 (needs a fresh account to be conclusive), C4c + G2 (L1
 patch regression anchors).
