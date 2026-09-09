@@ -1,5 +1,5 @@
 --[[===========================================================================
-    STALKER // Security Test Harness  v1.0
+    STALKER // Security Test Harness  v1.2 (resizable window: drag corner grip, + to maximize)
     ---------------------------------------------------------------------------
     WHAT: In-game GUI to test every finding in SECURITY_AUDIT.md against a
           LIVE server. Fires the same remotes an exploiter would, then shows
@@ -334,17 +334,18 @@ local function buildGUI()
 
     main = mk("Frame", {Name = "Main", Size = UDim2.fromOffset(780, 560),
         Position = UDim2.new(0.5, -390, 0.5, -280), BackgroundColor3 = BG,
-        BorderSizePixel = 0, Active = true, Draggable = true}, gui)
+        BorderSizePixel = 0, Active = true}, gui)
     mk("UICorner", {CornerRadius = UDim.new(0, 8)}, main)
     mk("UIStroke", {Color = Color3.fromRGB(60, 60, 70), Thickness = 1}, main)
 
-    local top = mk("Frame", {Size = UDim2.new(1, 0, 0, 40), BackgroundColor3 = PANEL, BorderSizePixel = 0}, main)
+    local top = mk("Frame", {Size = UDim2.new(1, 0, 0, 40), BackgroundColor3 = PANEL,
+        BorderSizePixel = 0, Active = true}, main)
     mk("UICorner", {CornerRadius = UDim.new(0, 8)}, top)
-    mk("TextLabel", {Size = UDim2.new(1, -260, 1, 0), Position = UDim2.fromOffset(12, 0),
-        BackgroundTransparency = 1, Text = "STALKER // SECURITY TEST HARNESS",
+    mk("TextLabel", {Size = UDim2.new(1, -270, 1, 0), Position = UDim2.fromOffset(12, 0),
+        BackgroundTransparency = 1, Text = "STALKER // SECURITY TEST HARNESS  v1.2",
         Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = ACCENT,
         TextXAlignment = Enum.TextXAlignment.Left}, top)
-    local safeBtn = mk("TextButton", {Size = UDim2.fromOffset(150, 26), Position = UDim2.new(1, -252, 0.5, -13),
+    local safeBtn = mk("TextButton", {Size = UDim2.fromOffset(140, 26), Position = UDim2.new(1, -246, 0.5, -13),
         BackgroundColor3 = Color3.fromRGB(50, 110, 60), Text = "SAFE MODE: ON",
         Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = TXT, BorderSizePixel = 0}, top)
     mk("UICorner", {CornerRadius = UDim.new(0, 4)}, safeBtn)
@@ -354,11 +355,95 @@ local function buildGUI()
         safeBtn.BackgroundColor3 = SAFE_MODE and Color3.fromRGB(50, 110, 60) or Color3.fromRGB(140, 50, 50)
         log("WARN", "Safe mode " .. (SAFE_MODE and "ENABLED (danger tests blocked)" or "DISABLED (all tests live!)"))
     end)
-    local hideBtn = mk("TextButton", {Size = UDim2.fromOffset(80, 26), Position = UDim2.new(1, -92, 0.5, -13),
-        BackgroundColor3 = ROW, Text = "HIDE (RSHIFT)", Font = Enum.Font.Gotham,
+    local hideBtn = mk("TextButton", {Size = UDim2.fromOffset(64, 26), Position = UDim2.new(1, -100, 0.5, -13),
+        BackgroundColor3 = ROW, Text = "HIDE", Font = Enum.Font.GothamBold,
         TextSize = 11, TextColor3 = DIM, BorderSizePixel = 0}, top)
     mk("UICorner", {CornerRadius = UDim.new(0, 4)}, hideBtn)
     hideBtn.MouseButton1Click:Connect(function() main.Visible = false end)
+    local maxBtn = mk("TextButton", {Size = UDim2.fromOffset(28, 26), Position = UDim2.new(1, -32, 0.5, -13),
+        BackgroundColor3 = ROW, Text = "+", Font = Enum.Font.GothamBold,
+        TextSize = 16, TextColor3 = DIM, BorderSizePixel = 0}, top)
+    mk("UICorner", {CornerRadius = UDim.new(0, 4)}, maxBtn)
+    local savedSize, savedPos, maximized = nil, nil, false
+    maxBtn.MouseButton1Click:Connect(function()
+        if not maximized then
+            savedSize, savedPos = main.Size, main.Position
+            local vs = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
+            local nw = math.clamp(vs.X - 40, 520, 1200)
+            local nh = math.clamp(vs.Y - 40, 380, 800)
+            main.Size = UDim2.fromOffset(nw, nh)
+            main.Position = UDim2.new(0.5, -nw / 2, 0.5, -nh / 2)
+            maximized = true
+            maxBtn.Text = "-"
+            log("INFO", "Window maximized (press - to restore, or drag the corner grip)")
+        else
+            if savedSize then main.Size = savedSize end
+            if savedPos then main.Position = savedPos end
+            maximized = false
+            maxBtn.Text = "+"
+        end
+    end)
+
+    -- Drag by title bar (custom, so it never fights the resize grip)
+    local dragging = false
+    local dsX, dsY, dmX, dmY = 0, 0, 0, 0
+    top.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dsX, dsY = main.Position.X.Offset, main.Position.Y.Offset
+            local scX = main.Position.X.Scale
+            local scY = main.Position.Y.Scale
+            local vs = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
+            dsX = scX * vs.X + dsX
+            dsY = scY * vs.Y + dsY
+            dmX, dmY = input.Position.X, input.Position.Y
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then dragging = false end
+            end)
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if not dragging then return end
+        if input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch then
+            main.Position = UDim2.fromOffset(input.Position.X - dmX + dsX, input.Position.Y - dmY + dsY)
+        end
+    end)
+
+    -- Resize grip (bottom-right corner)
+    local grip = mk("TextButton", {Name = "ResizeGrip", Size = UDim2.fromOffset(28, 28),
+        Position = UDim2.new(1, -28, 1, -28), BackgroundTransparency = 1, Text = "",
+        BorderSizePixel = 0, ZIndex = 5, AutoButtonColor = false}, main)
+    for _, s in ipairs({{14, 13, 20}, {9, 12, 15}, {4, 11, 10}}) do
+        mk("Frame", {Size = UDim2.fromOffset(s[1], 2),
+            Position = UDim2.fromOffset(s[2], s[3]),
+            BackgroundColor3 = DIM, BorderSizePixel = 0, Rotation = -45}, grip)
+    end
+    local resizing = false
+    local rsX, rsY, rmX, rmY = 0, 0, 0, 0
+    grip.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            resizing = true
+            maximized = false
+            maxBtn.Text = "+"
+            rsX, rsY = main.Size.X.Offset, main.Size.Y.Offset
+            rmX, rmY = input.Position.X, input.Position.Y
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then resizing = false end
+            end)
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if not resizing then return end
+        if input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch then
+            local nx = math.clamp(rsX + (input.Position.X - rmX), 520, 1200)
+            local ny = math.clamp(rsY + (input.Position.Y - rmY), 380, 800)
+            main.Size = UDim2.fromOffset(nx, ny)
+        end
+    end)
 
     local tabs = mk("Frame", {Size = UDim2.new(0, 130, 1, -40), Position = UDim2.fromOffset(0, 40),
         BackgroundColor3 = PANEL, BorderSizePixel = 0}, main)
@@ -622,6 +707,11 @@ addNote("START", "Red tests inside the suite are skipped while Safe Mode is ON. 
 suiteBtn.MouseButton1Click:Connect(function()
     suiteBtn.Text = "RUNNING... watch the LOG tab"
     task.spawn(function()
+        if type(SUITE) ~= "table" or type(TESTS) ~= "table" then
+            log("WARN", "Harness did not load fully (partial paste?). Re-copy the WHOLE Raw file and execute again.")
+            suiteBtn.Text = "LOAD ERROR - re-copy full file!"
+            return
+        end
         for _, id in ipairs(SUITE) do
             if TESTS[id] then runTestSync(id); task.wait(2) end
         end
@@ -658,7 +748,7 @@ addNote("SETUP", "Run on a NON-ADMIN alt. Pick a JUNK item for destructive tests
 
 addTest("SETUP", "S0", "Refresh ALL context (inv, vicinity, npcs, players, db)", "safe", function()
     refreshInventory(); refreshVicinity(); refreshNPCs(); refreshPlayers(); refreshItemIDs(); refreshBalance()
-    for _, f in ipairs(SelectorRefresh) do pcall(f) end
+    for _, f in ipairs(SelectorRefresh or {}) do pcall(f) end
     return "INFO", string.format("inv=%d vic=%d npc=%d players=%d itemIDs=%d bal=%s",
         #CTX.invItems, #CTX.vicItems, #CTX.npcs, #CTX.players, #CTX.itemIDs, tostring(CTX.balance))
 end)
@@ -1438,7 +1528,7 @@ copyBtn.MouseButton1Click:Connect(function()
 end)
 
 --// Init -------------------------------------------------------------------
-showTab("SETUP")
+showTab("START")
 UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe then return end
     if input.KeyCode == Enum.KeyCode.RightShift then
@@ -1446,8 +1536,13 @@ UserInputService.InputBegan:Connect(function(input, gpe)
     end
 end)
 
-log("INFO", "STALKER security harness v1.1 loaded. Safe mode ON. Run on NON-ADMIN alt!")
-log("INFO", "Follow the START tab: 1) SETUP -> S0 Refresh + pick junk, 2) RUN PRIORITY SUITE.")
+do
+    local n = 0
+    for _ in pairs(TESTS or {}) do n = n + 1 end
+    log("INFO", "STALKER security harness v1.2 loaded. Safe mode ON. Run on NON-ADMIN alt!")
+    log("INFO", "Registered " .. n .. " tests (expect 51 - if less, re-copy the WHOLE Raw file).")
+    log("INFO", "Follow the START tab: 1) SETUP -> S0 Refresh + pick junk, 2) RUN PRIORITY SUITE.")
+end
 log("WARN", "DANGER (red) tests are blocked until you toggle SAFE MODE off.")
 task.spawn(function()
     task.wait(1)
