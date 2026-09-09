@@ -1,5 +1,5 @@
 --[[===========================================================================
-    STALKER // Security Test Harness  v1.3 (resizable window: drag corner grip, + to maximize)
+    STALKER // Security Test Harness  v1.4 (resizable window: drag corner grip, + to maximize)
     ---------------------------------------------------------------------------
     WHAT: In-game GUI to test every finding in SECURITY_AUDIT.md against a
           LIVE server. Fires the same remotes an exploiter would, then shows
@@ -303,6 +303,22 @@ local function countItem(id)
     return n
 end
 
+-- Consumable allowlist for USE-spam tests (D3a/D3b). Firing UseItem at a
+-- NON-usable item (ammo box, mag) consumes nothing and proves nothing, so
+-- these tests auto-prefer a consumable and fall back to the picked item.
+local CONSUMABLE_HINTS = {"bread", "medkit", "ai-2", "ai2", "dressing", "bandage",
+    "iodine", "peroxide", "canned", "ration", "sausage", "vodka", "beans",
+    "water", "antirad", "syringe", "morphine", "splint", "charcoal", "tourniquet"}
+local function findConsumable()
+    for _, e in ipairs(CTX.invItems) do
+        local idl = string.lower(e.ID)
+        for _, h in ipairs(CONSUMABLE_HINTS) do
+            if string.find(idl, h, 1, true) then return e end
+        end
+    end
+    return nil
+end
+
 --// GUI --------------------------------------------------------------------
 local gui, main, contentFrames, tabBtns, statusLabels
 local BG      = Color3.fromRGB(14, 15, 18)
@@ -342,7 +358,7 @@ local function buildGUI()
         BorderSizePixel = 0, Active = true}, main)
     mk("UICorner", {CornerRadius = UDim.new(0, 8)}, top)
     mk("TextLabel", {Size = UDim2.new(1, -270, 1, 0), Position = UDim2.fromOffset(12, 0),
-        BackgroundTransparency = 1, Text = "STALKER // SECURITY TEST HARNESS  v1.3",
+        BackgroundTransparency = 1, Text = "STALKER // SECURITY TEST HARNESS  v1.4",
         Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = ACCENT,
         TextXAlignment = Enum.TextXAlignment.Left}, top)
     local safeBtn = mk("TextButton", {Size = UDim2.fromOffset(140, 26), Position = UDim2.new(1, -246, 0.5, -13),
@@ -507,8 +523,8 @@ local DESCRIPTIONS = {
     C3b = "Drops more money than you own. PASS = rejected and nothing spawned.",
     C3c = "Control test: drops R1 then picks it up. Balance should end exactly equal.",
     C7a = "Tells the server you took 99999 fall damage. Can kill you if the server trusts it.",
-    D3a = "Uses ONE item 25 times in the same instant. PASS = exactly 1 was consumed.",
-    D3b = "Same idea through the hotbar (10x). Checks how many got consumed.",
+    D3a = "Uses ONE consumable 25x in the same instant (auto-picks Bread/meds). PASS = exactly 1 consumed.",
+    D3b = "Same idea through the hotbar (10x). Auto-picks a consumable if you have one.",
     D4 = "Moves ONE item into TWO grids at the same time. In 2 places = dupe!",
     D1 = "Drops AND sells the same item simultaneously. It must end up in ONE place.",
     D7 = "Sells the same item 5 times inside one request. PASS = paid at most once.",
@@ -1073,8 +1089,12 @@ addNote("CRITICAL", "Manual: delete/disable FallDamage LocalScript, jump off som
 addHeader("DUPES", "H1 - INVENTORY RACE DUPES (use JUNK item!)")
 
 addTest("DUPES", "D3a", "UseItem x25 SAME FRAME (multi-use?)", "caution", function()
-    local e = selInv()
+    local e = findConsumable()
+    local auto = (e ~= nil)
+    if not e then e = selInv() end
     if not e then return "INFO", "select item first" end
+    log("INFO", (auto and "auto-picked consumable: " or "no consumable found, using picked: ")
+        .. e.ID .. " idx=" .. tostring(e.index))
     local id = e.ID
     refreshInventory()
     local before = countItem(id)
@@ -1088,8 +1108,11 @@ addTest("DUPES", "D3a", "UseItem x25 SAME FRAME (multi-use?)", "caution", functi
 end)
 
 addTest("DUPES", "D3b", "UseItemByType x10 (hotbar path)", "caution", function()
-    local e = selInv()
+    local e = findConsumable()
+    local auto = (e ~= nil)
+    if not e then e = selInv() end
     if not e then return "INFO", "select item first" end
+    log("INFO", (auto and "auto-picked consumable: " or "no consumable found, using picked: ") .. e.ID)
     refreshInventory()
     local before = countItem(e.ID)
     for _ = 1, 10 do fireEv("UseItemByType", e.ID) end
@@ -1661,8 +1684,8 @@ end)
 do
     local n = 0
     for _ in pairs(TESTS or {}) do n = n + 1 end
-    log("INFO", "STALKER security harness v1.3 loaded. Safe mode ON. Run on NON-ADMIN alt!")
-    log("INFO", "Registered " .. n .. " tests (expect 51 - if less, re-copy the WHOLE Raw file).")
+    log("INFO", "STALKER security harness v1.4 loaded. Safe mode ON. Run on NON-ADMIN alt!")
+    log("INFO", "Registered " .. n .. " tests (expect 53 - if less, re-copy the WHOLE Raw file).")
     log("INFO", "Follow the START tab: 1) SETUP -> S0 Refresh + pick junk, 2) RUN PRIORITY SUITE.")
 end
 log("WARN", "DANGER (red) tests are blocked until you toggle SAFE MODE off.")
