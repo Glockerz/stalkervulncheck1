@@ -1,0 +1,1 @@
+{"class":"ModuleScript","name":"Replecs","source":"-- Saved by UniversalSynSaveInstance (Join to Copy Games) https://discord.gg/wx4ThpAsmw\n\n-- https://lua.expert/\nreturn require(script.Parent._Index[\"pepeeltoro41_replecs@0.3.1\"].replecs)"}

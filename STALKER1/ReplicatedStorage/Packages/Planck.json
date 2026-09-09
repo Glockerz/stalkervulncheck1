@@ -1,0 +1,1 @@
+{"class":"ModuleScript","name":"Planck","source":"-- Saved by UniversalSynSaveInstance (Join to Copy Games) https://discord.gg/wx4ThpAsmw\n\n-- https://lua.expert/\nreturn require(script.Parent._Index[\"yetanotherclown_planck@0.2.0\"].planck)"}
