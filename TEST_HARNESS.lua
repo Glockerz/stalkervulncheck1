@@ -1,5 +1,5 @@
 --[[===========================================================================
-    STALKER // Security Test Harness  v1.10 (resizable window: drag corner grip, + to maximize)
+    STALKER // Security Test Harness  v1.11 (resizable window: drag corner grip, + to maximize)
     ---------------------------------------------------------------------------
     WHAT: In-game GUI to test every finding in SECURITY_AUDIT.md against a
           LIVE server. Fires the same remotes an exploiter would, then shows
@@ -424,7 +424,7 @@ local function buildGUI()
         BorderSizePixel = 0, Active = true}, main)
     mk("UICorner", {CornerRadius = UDim.new(0, 8)}, top)
     mk("TextLabel", {Size = UDim2.new(1, -270, 1, 0), Position = UDim2.fromOffset(12, 0),
-        BackgroundTransparency = 1, Text = "STALKER // SECURITY TEST HARNESS  v1.10",
+        BackgroundTransparency = 1, Text = "STALKER // SECURITY TEST HARNESS  v1.11",
         Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = ACCENT,
         TextXAlignment = Enum.TextXAlignment.Left}, top)
     local safeBtn = mk("TextButton", {Size = UDim2.fromOffset(140, 26), Position = UDim2.new(1, -246, 0.5, -13),
@@ -1472,6 +1472,25 @@ victimBtn.MouseButton1Click:Connect(function()
     victimBtn.BackgroundColor3 = CTX.useAI and Color3.fromRGB(90, 50, 50) or Color3.fromRGB(70, 60, 40)
     log("WARN", "Combat victim = " .. (CTX.useAI and "HOSTILE AI (pick one in the SETUP dropdown)" or "ALT PLAYER"))
 end)
+testCounter = testCounter + 1
+local tpBtn = mk("TextButton", {Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Color3.fromRGB(50, 70, 90),
+    Text = "TP TO VICTIM (8m, for close-range tests)", Font = Enum.Font.GothamBold, TextSize = 12,
+    TextColor3 = TXT, BorderSizePixel = 0, LayoutOrder = testCounter}, contentFrames["COMBAT"])
+mk("UICorner", {CornerRadius = UDim.new(0, 6)}, tpBtn)
+tpBtn.MouseButton1Click:Connect(function()
+    local head = victimHead()
+    if not head then
+        log("WARN", "TP: no victim - pick ALT player or HOSTILE AI first")
+        return
+    end
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then log("WARN", "TP: no character"); return end
+    pcall(function()
+        char:PivotTo(CFrame.new(head.Position + Vector3.new(0, 4, 8), head.Position))
+    end)
+    log("WARN", "TP'd to 8m of victim, facing it. Run C4a / C5a / G2 now.")
+end)
 
 addTest("COMBAT", "G0", "Inspect equipped gun + ammo", "safe", function()
     local gun = findGun()
@@ -1863,7 +1882,7 @@ end)
 do
     local n = 0
     for _ in pairs(TESTS or {}) do n = n + 1 end
-    log("INFO", "STALKER security harness v1.10 loaded. Safe mode ON. Run on NON-ADMIN alt!")
+    log("INFO", "STALKER security harness v1.11 loaded. Safe mode ON. Run on NON-ADMIN alt!")
     log("INFO", "Registered " .. n .. " tests (expect 54 - if less, re-copy the WHOLE Raw file).")
     log("INFO", "Follow the START tab: 1) SETUP -> S0 Refresh + pick junk, 2) RUN PRIORITY SUITE.")
 end
