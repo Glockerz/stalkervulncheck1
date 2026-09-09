@@ -370,7 +370,7 @@ local function buildGUI()
     return tabs
 end
 
-local TAB_ORDER = {"SETUP", "CRITICAL", "DUPES", "ECONOMY", "COMBAT", "MISC", "LOG"}
+local TAB_ORDER = {"START", "SETUP", "CRITICAL", "DUPES", "ECONOMY", "COMBAT", "MISC", "LOG"}
 local function buildTabs(tabs)
     local content = mk("Frame", {Size = UDim2.new(1, -130, 1, -40), Position = UDim2.fromOffset(130, 40),
         BackgroundTransparency = 1}, main)
@@ -458,28 +458,62 @@ local function addNote(tab, text)
     return l
 end
 
--- Selector: label + < value >  (cycles a list via get/set callbacks)
-local function addSelector(tab, label, getText, onPrev, onNext)
+-- Dropdown: label + button showing current value; click opens a popup list.
+-- itemsFn() -> array of strings; getFn() -> index; setFn(i) selects.
+local openPopup = nil
+local function closePopup()
+    if openPopup then pcall(function() openPopup:Destroy() end); openPopup = nil end
+end
+
+local function addDropdown(tab, label, itemsFn, getFn, setFn)
     testCounter = testCounter + 1
-    local row = mk("Frame", {Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = ROW,
+    local row = mk("Frame", {Size = UDim2.new(1, 0, 0, 32), BackgroundColor3 = ROW,
         BorderSizePixel = 0, LayoutOrder = testCounter}, contentFrames[tab])
     mk("UICorner", {CornerRadius = UDim.new(0, 4)}, row)
     mk("TextLabel", {Size = UDim2.new(0, 150, 1, 0), Position = UDim2.fromOffset(8, 0),
         BackgroundTransparency = 1, Text = label, Font = Enum.Font.GothamBold,
         TextSize = 11, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Left}, row)
-    local val = mk("TextLabel", {Size = UDim2.new(1, -220, 1, 0), Position = UDim2.fromOffset(158, 0),
-        BackgroundTransparency = 1, Text = "", Font = Enum.Font.Code,
-        TextSize = 11, TextColor3 = TXT, TextXAlignment = Enum.TextXAlignment.Left,
-        TextTruncate = Enum.TextTruncate.AtEnd}, row)
-    local function refresh() val.Text = getText() end
-    local prev = mk("TextButton", {Size = UDim2.fromOffset(28, 22), Position = UDim2.new(1, -64, 0.5, -11),
-        BackgroundColor3 = PANEL, Text = "<", Font = Enum.Font.GothamBold,
-        TextSize = 14, TextColor3 = TXT, BorderSizePixel = 0}, row)
-    local next = mk("TextButton", {Size = UDim2.fromOffset(28, 22), Position = UDim2.new(1, -32, 0.5, -11),
-        BackgroundColor3 = PANEL, Text = ">", Font = Enum.Font.GothamBold,
-        TextSize = 14, TextColor3 = TXT, BorderSizePixel = 0}, row)
-    prev.MouseButton1Click:Connect(function() onPrev(); refresh() end)
-    next.MouseButton1Click:Connect(function() onNext(); refresh() end)
+    local btn = mk("TextButton", {Size = UDim2.new(1, -166, 1, -8), Position = UDim2.fromOffset(158, 4),
+        BackgroundColor3 = BG, Text = "", Font = Enum.Font.Code, TextSize = 11, TextColor3 = TXT,
+        TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+        BorderSizePixel = 0, AutoButtonColor = true}, row)
+    mk("UICorner", {CornerRadius = UDim.new(0, 4)}, btn)
+    local function refresh()
+        local items = itemsFn() or {}
+        local idx = getFn() or 1
+        btn.Text = "  " .. (items[idx] or "(none - run S0 Refresh first)") .. "      v"
+    end
+    btn.MouseButton1Click:Connect(function()
+        if openPopup then closePopup(); return end
+        local items = itemsFn() or {}
+        if #items == 0 then refresh(); return end
+        local absPos, absSize = btn.AbsolutePosition, btn.AbsoluteSize
+        local back = mk("TextButton", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
+            Text = "", ZIndex = 90, AutoButtonColor = false}, gui)
+        local h = math.min(#items * 26 + 10, 240)
+        local pop = mk("Frame", {Size = UDim2.fromOffset(absSize.X, h),
+            Position = UDim2.fromOffset(absPos.X, absPos.Y + absSize.Y + 2),
+            BackgroundColor3 = PANEL, BorderSizePixel = 0, ZIndex = 91}, back)
+        mk("UICorner", {CornerRadius = UDim.new(0, 4)}, pop)
+        local stroke = mk("UIStroke", {Color = ACCENT, Thickness = 1}, pop)
+        local scroll = mk("ScrollingFrame", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
+            BorderSizePixel = 0, ScrollBarThickness = 4, ScrollBarImageColor3 = ACCENT,
+            CanvasSize = UDim2.new(0, 0, 0, #items * 26 + 6), ZIndex = 92}, pop)
+        mk("UIListLayout", {Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder}, scroll)
+        mk("UIPadding", {PaddingTop = UDim.new(0, 4), PaddingLeft = UDim.new(0, 4),
+            PaddingRight = UDim.new(0, 4)}, scroll)
+        for i, name in ipairs(items) do
+            local ob = mk("TextButton", {Size = UDim2.new(1, -8, 0, 24),
+                BackgroundColor3 = (i == getFn()) and Color3.fromRGB(50, 55, 70) or ROW,
+                Text = "  " .. tostring(name), Font = Enum.Font.Code, TextSize = 11, TextColor3 = TXT,
+                TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+                BorderSizePixel = 0, LayoutOrder = i, ZIndex = 93, AutoButtonColor = true}, scroll)
+            mk("UICorner", {CornerRadius = UDim.new(0, 3)}, ob)
+            ob.MouseButton1Click:Connect(function() setFn(i); refresh(); closePopup() end)
+        end
+        openPopup = back
+        back.MouseButton1Click:Connect(function() closePopup() end)
+    end)
     refresh()
     return refresh
 end
@@ -550,6 +584,74 @@ end
 local tabs = buildGUI()
 buildTabs(tabs)
 
+-- ============================ START ========================================
+addHeader("START", "WHAT IS THIS TOOL?")
+addNote("START", "It attacks YOUR game the way an exploiter would, then shows whether your server blocked it.")
+addNote("START", "Run it on an ALT account with NO admin rights, on a private server.")
+
+addHeader("START", "LEGEND - what the colors mean")
+local function legendRow(dotColor, text)
+    testCounter = testCounter + 1
+    local row = mk("Frame", {Size = UDim2.new(1, 0, 0, 24), BackgroundTransparency = 1,
+        LayoutOrder = testCounter}, contentFrames["START"])
+    local dot = mk("Frame", {Size = UDim2.fromOffset(10, 10), Position = UDim2.new(0, 8, 0.5, -5),
+        BackgroundColor3 = dotColor, BorderSizePixel = 0}, row)
+    mk("UICorner", {CornerRadius = UDim.new(1, 0)}, dot)
+    mk("TextLabel", {Size = UDim2.new(1, -30, 1, 0), Position = UDim2.fromOffset(26, 0),
+        BackgroundTransparency = 1, Text = text, Font = Enum.Font.Gotham, TextSize = 12,
+        TextColor3 = TXT, TextXAlignment = Enum.TextXAlignment.Left,
+        TextTruncate = Enum.TextTruncate.AtEnd}, row)
+end
+legendRow(GREEN, "Green dot = SAFE test, changes nothing.        [PASS] = server blocked it. You are SAFE.")
+legendRow(YELLOW, "Yellow dot = CAREFUL, touches YOUR items.  [FAIL] = server allowed it. FIX IT!")
+legendRow(RED, "Red dot = DANGER. Blocked while Safe Mode is ON (top-right button).")
+legendRow(GREY, "[INFO] = just an observation. Open the LOG tab for details.")
+
+addHeader("START", "QUICK START - do this in order")
+addNote("START", "1.  SETUP tab  ->  run S0 Refresh,  then pick a JUNK item + a trader in the dropdowns.")
+addNote("START", "2.  Come back here and press RUN PRIORITY SUITE below (10 key tests, automatic).")
+addNote("START", "3.  Read the summary + the LOG tab. Every red FAIL is a real vulnerability.")
+addNote("START", "4.  Explore the other tabs for deeper tests. Combat tests shoot your ALT - use one!")
+
+testCounter = testCounter + 1
+local suiteBtn = mk("TextButton", {Size = UDim2.new(1, 0, 0, 42), BackgroundColor3 = Color3.fromRGB(60, 90, 140),
+    Text = "RUN PRIORITY SUITE  (10 key tests, automatic)", Font = Enum.Font.GothamBold, TextSize = 14,
+    TextColor3 = TXT, BorderSizePixel = 0, LayoutOrder = testCounter}, contentFrames["START"])
+mk("UICorner", {CornerRadius = UDim.new(0, 6)}, suiteBtn)
+addNote("START", "Red tests inside the suite are skipped while Safe Mode is ON. Totally safe to run as-is.")
+suiteBtn.MouseButton1Click:Connect(function()
+    suiteBtn.Text = "RUNNING... watch the LOG tab"
+    task.spawn(function()
+        for _, id in ipairs(SUITE) do
+            if TESTS[id] then runTestSync(id); task.wait(2) end
+        end
+        suiteBtn.Text = "RUN PRIORITY SUITE  (10 key tests, automatic)"
+        log("INFO", "Suite finished. Summary is above, details are in the LOG tab.")
+    end)
+end)
+
+addHeader("START", "RESULTS SUMMARY")
+testCounter = testCounter + 1
+local sumRow = mk("Frame", {Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = ROW,
+    BorderSizePixel = 0, LayoutOrder = testCounter}, contentFrames["START"])
+mk("UICorner", {CornerRadius = UDim.new(0, 4)}, sumRow)
+local sumP = mk("TextLabel", {Size = UDim2.new(0.33, 0, 1, 0), BackgroundTransparency = 1,
+    Text = "PASSED (safe): 0", Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = GREEN}, sumRow)
+local sumF = mk("TextLabel", {Size = UDim2.new(0.34, 0, 1, 0), Position = UDim2.new(0.33, 0, 0, 0),
+    BackgroundTransparency = 1, Text = "FAILED (fix me): 0", Font = Enum.Font.GothamBold, TextSize = 13,
+    TextColor3 = RED}, sumRow)
+local sumR = mk("TextLabel", {Size = UDim2.new(0.33, 0, 1, 0), Position = UDim2.new(0.67, 0, 0, 0),
+    BackgroundTransparency = 1, Text = "TO REVIEW: 0", Font = Enum.Font.GothamBold, TextSize = 13,
+    TextColor3 = DIM}, sumRow)
+testCounter = testCounter + 1
+local sumList = mk("TextBox", {Size = UDim2.new(1, 0, 0, 58), BackgroundColor3 = Color3.fromRGB(8, 9, 12),
+    Text = "No results yet - run the suite!", Font = Enum.Font.Code, TextSize = 12, TextColor3 = TXT,
+    TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
+    MultiLine = true, TextEditable = false, ClearTextOnFocus = false, BorderSizePixel = 0,
+    LayoutOrder = testCounter}, contentFrames["START"])
+mk("UICorner", {CornerRadius = UDim.new(0, 4)}, sumList)
+SummaryVals = {pass = sumP, fail = sumF, rev = sumR, list = sumList}
+
 -- ============================ SETUP ========================================
 addHeader("SETUP", "CONTEXT - refresh first, then pick targets")
 addNote("SETUP", "Run on a NON-ADMIN alt. Pick a JUNK item for destructive tests.")
@@ -561,43 +663,43 @@ addTest("SETUP", "S0", "Refresh ALL context (inv, vicinity, npcs, players, db)",
         #CTX.invItems, #CTX.vicItems, #CTX.npcs, #CTX.players, #CTX.itemIDs, tostring(CTX.balance))
 end)
 
-table.insert(SelectorRefresh, addSelector("SETUP", "My item (junk!)", function()
-    local e = selInv()
-    if not e then return "(none - refresh)" end
-    return string.format("%s | idx=%s | tied=%s", e.ID, tostring(e.index), tostring(e.tied))
-end, function() CTX.invSel = cyc(CTX.invItems, CTX.invSel, -1) end,
-   function() CTX.invSel = cyc(CTX.invItems, CTX.invSel, 1) end))
+table.insert(SelectorRefresh, addDropdown("SETUP", "My item (use JUNK!)", function()
+    local t = {}
+    for _, e in ipairs(CTX.invItems) do
+        table.insert(t, string.format("%s | idx=%s | %s", e.ID, tostring(e.index), tostring(e.tied)))
+    end
+    return t
+end, function() return CTX.invSel end, function(i) CTX.invSel = i end))
 
-table.insert(SelectorRefresh, addSelector("SETUP", "Vicinity item", function()
-    local e = selVic()
-    if not e then return "(none nearby - drop something)" end
-    return string.format("%s | idx=%s", e.ID, tostring(e.index))
-end, function() CTX.vicSel = cyc(CTX.vicItems, CTX.vicSel, -1) end,
-   function() CTX.vicSel = cyc(CTX.vicItems, CTX.vicSel, 1) end))
+table.insert(SelectorRefresh, addDropdown("SETUP", "Vicinity item", function()
+    local t = {}
+    for _, e in ipairs(CTX.vicItems) do
+        table.insert(t, string.format("%s | idx=%s", e.ID, tostring(e.index)))
+    end
+    return t
+end, function() return CTX.vicSel end, function(i) CTX.vicSel = i end))
 
-table.insert(SelectorRefresh, addSelector("SETUP", "Trader NPC", function()
-    local n = selNPC()
-    if not n then return "(none found)" end
-    return n:GetFullName()
-end, function() CTX.npcSel = cyc(CTX.npcs, CTX.npcSel, -1) end,
-   function() CTX.npcSel = cyc(CTX.npcs, CTX.npcSel, 1) end))
+table.insert(SelectorRefresh, addDropdown("SETUP", "Trader NPC", function()
+    local t = {}
+    for _, n in ipairs(CTX.npcs) do table.insert(t, n:GetFullName()) end
+    return t
+end, function() return CTX.npcSel end, function(i) CTX.npcSel = i end))
 
-table.insert(SelectorRefresh, addSelector("SETUP", "Target player", function()
-    local p = selPlayer()
-    if not p then return "(none)" end
-    return p.Name .. (p == LocalPlayer and " (YOU)" or " (alt)")
-end, function() CTX.playerSel = cyc(CTX.players, CTX.playerSel, -1) end,
-   function() CTX.playerSel = cyc(CTX.players, CTX.playerSel, 1) end))
+table.insert(SelectorRefresh, addDropdown("SETUP", "Target player", function()
+    local t = {}
+    for _, p in ipairs(CTX.players) do
+        table.insert(t, p.Name .. (p == LocalPlayer and " (YOU)" or " (alt)"))
+    end
+    return t
+end, function() return CTX.playerSel end, function(i) CTX.playerSel = i end))
 
-table.insert(SelectorRefresh, addSelector("SETUP", "Spoof item ID", function()
-    return selItemID() or "(db missing)"
-end, function() CTX.itemSel = cyc(CTX.itemIDs, CTX.itemSel, -1) end,
-   function() CTX.itemSel = cyc(CTX.itemIDs, CTX.itemSel, 1) end))
+table.insert(SelectorRefresh, addDropdown("SETUP", "Spoof item ID", function()
+    return CTX.itemIDs
+end, function() return CTX.itemSel end, function(i) CTX.itemSel = i end))
 
-table.insert(SelectorRefresh, addSelector("SETUP", "Faction key", function()
-    return CTX.factions[CTX.factionSel]
-end, function() CTX.factionSel = cyc(CTX.factions, CTX.factionSel, -1) end,
-   function() CTX.factionSel = cyc(CTX.factions, CTX.factionSel, 1) end))
+table.insert(SelectorRefresh, addDropdown("SETUP", "Faction key", function()
+    return CTX.factions
+end, function() return CTX.factionSel end, function(i) CTX.factionSel = i end))
 
 addTest("SETUP", "S1", "Dump remote inventory (all folders)", "safe", function()
     for _, f in ipairs({Remotes, TaskRemotes, SquadRemotes,
@@ -1344,8 +1446,8 @@ UserInputService.InputBegan:Connect(function(input, gpe)
     end
 end)
 
-log("INFO", "STALKER security harness loaded. Safe mode ON. Run on NON-ADMIN alt!")
-log("INFO", "Step 1: SETUP tab -> S0 Refresh. Step 2: pick junk item + trader + alt victim.")
+log("INFO", "STALKER security harness v1.1 loaded. Safe mode ON. Run on NON-ADMIN alt!")
+log("INFO", "Follow the START tab: 1) SETUP -> S0 Refresh + pick junk, 2) RUN PRIORITY SUITE.")
 log("WARN", "DANGER (red) tests are blocked until you toggle SAFE MODE off.")
 task.spawn(function()
     task.wait(1)
