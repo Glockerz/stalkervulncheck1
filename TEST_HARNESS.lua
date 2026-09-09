@@ -1,5 +1,5 @@
 --[[===========================================================================
-    STALKER // Security Test Harness  v1.14 (resizable window: drag corner grip, + to maximize)
+    STALKER // Security Test Harness  v1.15 (resizable window: drag corner grip, + to maximize)
     ---------------------------------------------------------------------------
     WHAT: In-game GUI to test every finding in SECURITY_AUDIT.md against a
           LIVE server. Fires the same remotes an exploiter would, then shows
@@ -424,7 +424,7 @@ local function buildGUI()
         BorderSizePixel = 0, Active = true}, main)
     mk("UICorner", {CornerRadius = UDim.new(0, 8)}, top)
     mk("TextLabel", {Size = UDim2.new(1, -270, 1, 0), Position = UDim2.fromOffset(12, 0),
-        BackgroundTransparency = 1, Text = "STALKER // SECURITY TEST HARNESS  v1.14",
+        BackgroundTransparency = 1, Text = "STALKER // SECURITY TEST HARNESS  v1.15",
         Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = ACCENT,
         TextXAlignment = Enum.TextXAlignment.Left}, top)
     local safeBtn = mk("TextButton", {Size = UDim2.fromOffset(140, 26), Position = UDim2.new(1, -246, 0.5, -13),
@@ -1483,6 +1483,15 @@ addTest("COMBAT", "G2", "Pin Chambered+AUTO 15s (YOU mag-dump victim)", "caution
     if m0 ~= 0 then
         return "INFO", "mag must read EMPTY first (fire it dry - pin only takes on empty), then re-run"
     end
+    local lr, cmr, bolt = nil, nil, nil
+    pcall(function() lr = gun:GetAttribute("LoadedRounds") end)
+    pcall(function() cmr = gun:GetAttribute("CurrentMagRounds") end)
+    pcall(function()
+        local b = gun:FindFirstChild("BoltReady")
+        if b then bolt = b.Value end
+    end)
+    local lrc = (type(lr) == "table") and #lr or (lr ~= nil and "non-table?!" or "ABSENT")
+    log("INFO", "ammo-state: CurrentMagRounds=" .. tostring(cmr) .. " LoadedRounds=" .. tostring(lrc) .. " BoltReady=" .. tostring(bolt))
     local h0 = hum.Health
     local c0, f0 = chamber.Value, fmode.Value
     pcall(function() fmode.Value = 2 end)
@@ -1506,14 +1515,20 @@ addTest("COMBAT", "G2", "Pin Chambered+AUTO 15s (YOU mag-dump victim)", "caution
     else
         log("WARN", "verify FAILED: FireMode=" .. tostring(fv) .. " Chambered=" .. tostring(cv) .. " - paste this line!")
     end
-    log("WARN", "PINNED 15s - HOLD TRIGGER on " .. vname .. " NOW. Do NOT click other buttons!")
+    log("WARN", "PINNED 15s - HOLD TRIGGER on " .. vname .. " YOURSELF (no auto-clicker). Touch nothing else!")
+    local lastH = h0
     for _ = 1, 30 do
         if chamber.Parent == nil or fmode.Parent == nil then
             log("WARN", "gun instance DESTROYED mid-run (re-equip/death?) - pin lost, aborting")
             break
         end
-        pcall(function() gun:Activate() end)
         task.wait(0.5)
+        local hc = lastH
+        pcall(function() hc = hum.Health end)
+        if hc ~= lastH then
+            log("INFO", "victim hp " .. tostring(lastH) .. " -> " .. tostring(hc) .. " DURING window")
+            lastH = hc
+        end
     end
     stop = true
     if conn then conn:Disconnect() end
@@ -1800,7 +1815,7 @@ end)
 do
     local n = 0
     for _ in pairs(TESTS or {}) do n = n + 1 end
-    log("INFO", "STALKER security harness v1.14 loaded. Safe mode ON. Run on NON-ADMIN alt!")
+    log("INFO", "STALKER security harness v1.15 loaded. Safe mode ON. Run on NON-ADMIN alt!")
     log("INFO", "Registered " .. n .. " tests (expect 46 - if less, re-copy the WHOLE Raw file).")
     log("INFO", "Follow the START tab: 1) SETUP -> S0 Refresh + pick junk, 2) RUN PRIORITY SUITE.")
 end
