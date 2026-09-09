@@ -1,0 +1,1 @@
+{"class":"ModuleScript","name":"Jabby","source":"-- Saved by UniversalSynSaveInstance (Join to Copy Games) https://discord.gg/wx4ThpAsmw\n\n-- https://lua.expert/\nreturn require(script.Parent._Index[\"alicesaidhi_jabby@0.3.1\"].jabby)"}

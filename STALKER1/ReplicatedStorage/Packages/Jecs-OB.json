@@ -1,0 +1,1 @@
+{"class":"ModuleScript","name":"Jecs-OB","source":"-- Saved by UniversalSynSaveInstance (Join to Copy Games) https://discord.gg/wx4ThpAsmw\n\n-- https://lua.expert/\nreturn require(script.Parent._Index[\"k0br_jecs-ob@0.1.3\"][\"jecs-ob\"])"}

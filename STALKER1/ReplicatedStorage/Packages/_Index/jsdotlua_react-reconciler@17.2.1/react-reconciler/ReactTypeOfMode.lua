@@ -1,0 +1,11 @@
+-- Saved by UniversalSynSaveInstance (Join to Copy Games) https://discord.gg/wx4ThpAsmw
+
+-- https://lua.expert/
+return {
+	NoMode = 0,
+	StrictMode = 1,
+	BlockingMode = 2,
+	ConcurrentMode = 4,
+	ProfileMode = 8,
+	DebugTracingMode = 16
+}

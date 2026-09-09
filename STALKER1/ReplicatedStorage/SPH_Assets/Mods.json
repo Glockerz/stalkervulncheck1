@@ -1,0 +1,1 @@
+{"class":"ModuleScript","name":"Mods","source":"-- Saved by UniversalSynSaveInstance (Join to Copy Games) https://discord.gg/wx4ThpAsmw\n\n-- https://lua.expert/\nlocal _ = script.Parent\n\nreturn {\n\tviewmodelOverride = function(p1, p2) --[[ Line: 9 ]]\n\t\treturn nil\n\tend,\n\tonViewmodelRefresh = function(p1, p2) --[[ Line: 26 ]] end\n}"}

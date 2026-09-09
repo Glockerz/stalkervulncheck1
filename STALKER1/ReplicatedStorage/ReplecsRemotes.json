@@ -1,0 +1,1 @@
+{"class":"Folder","name":"ReplecsRemotes","children":[{"name":"ClientReady","class":"RemoteEvent"},{"name":"Unreliable","class":"UnreliableRemoteEvent"},{"name":"Updates","class":"RemoteEvent"},{"name":"Handshake","class":"RemoteFunction"},{"name":"FullState","class":"RemoteEvent"}]}

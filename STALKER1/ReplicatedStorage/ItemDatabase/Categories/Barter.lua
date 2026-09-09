@@ -1,0 +1,113 @@
+-- Saved by UniversalSynSaveInstance (Join to Copy Games) https://discord.gg/wx4ThpAsmw
+
+-- https://lua.expert/
+local v1 = Color3.fromRGB(35, 35, 35)
+local v2 = Color3.fromRGB(40, 45, 40)
+local v3 = Color3.fromRGB(45, 50, 55)
+local v4 = Color3.fromRGB(55, 50, 35)
+local v5 = Color3.fromRGB(70, 60, 30)
+local t = {
+	Bolts = "rbxassetid://94223705880235",
+	Nuts = "rbxassetid://78076100286061",
+	AAABattery = "rbxassetid://90177321173103",
+	Thread = "rbxassetid://91041586111519",
+	ElectricalTape = "rbxassetid://136339687190332",
+	GripTape = "rbxassetid://81942943270726",
+	MeasuringTape = "rbxassetid://109775383591580",
+	Disenfectant = "rbxassetid://70884306381537",
+	Tea = "rbxassetid://140236878948525",
+	HydrogenPeroxide = "rbxassetid://108188058790964",
+	Hammer = "rbxassetid://99981548293573",
+	BallpeenHammer = "rbxassetid://131365983516791",
+	Wrench = "rbxassetid://76716498338187",
+	Pliers = "rbxassetid://126874103295440",
+	Remote = "rbxassetid://104602859040615",
+	ClothFabric = "rbxassetid://111772524716032",
+	TextileFabrics = "rbxassetid://111847765967244",
+	ElectronicCable = "rbxassetid://110134437359622",
+	Capacitors = "rbxassetid://72508149372055",
+	MedicalScraps = "rbxassetid://122172593989353",
+	AntiqueTeapot = "rbxassetid://109815943326166",
+	Thermometer = "rbxassetid://139654405527724",
+	PressureGauge = "rbxassetid://129233060432583",
+	WD40 = "rbxassetid://110898993709635",
+	Jerrycan = "rbxassetid://76560502854354",
+	KerosineFuel = "rbxassetid://87396609315622",
+	BrokenPhone = "rbxassetid://82109054161616",
+	BrokenRadio = "rbxassetid://128487613229955",
+	GunCleaningLubricant = "rbxassetid://84106381874893",
+	Gunpowder = "rbxassetid://91795756326994",
+	AramidFabrics = "rbxassetid://121109496194355",
+	MedicalTools = "rbxassetid://93391624159096",
+	SleepingBagRoll = "rbxassetid://86716475833963",
+	PropaneTank = "rbxassetid://132054312355684",
+	Camera = "rbxassetid://125754581209946",
+	Tablet = "rbxassetid://111919437340200",
+	HardDrive = "rbxassetid://137518860306144",
+	CarBattery = "rbxassetid://96546352242629",
+	Toolset = "rbxassetid://99835437742597",
+	GunsmithingTools = "rbxassetid://99206403350398",
+	GoldWatch = "rbxassetid://108197884312586",
+	["GoPro HERO 8"] = "rbxassetid://90260711480157"
+}
+
+local function entry(p1, p2, p3, p4, p5, p6, p7, p8) --[[ entry | Line: 61 | Upvalues: t (copy) ]]
+	return {
+		BackgroundTransparency = 0.8,
+		ItemType = "Barter",
+		LootCategory = "Barter",
+		BackgroundColor = p7,
+		BaseSellValue = p3,
+		Description = p8,
+		ImageID = t[p2] or "",
+		Model = p2,
+		Name = p1,
+		Size = Vector2.new(p4, p5),
+		Weight = p6
+	}
+end
+
+return {
+	Bolts = entry("Bolts", "Bolts", 450, 1, 1, 0.4, v1, "Bag of threaded steel bolts."),
+	Nuts = entry("Nuts", "Nuts", 443, 1, 1, 0.3, v1, "Loose hex nuts."),
+	AAABattery = entry("AAA Battery", "AAABattery", 160, 1, 1, 0.1, v1, "Standard AAA cell."),
+	Thread = entry("Spool of Thread", "Thread", 80, 1, 1, 0.1, v1, "Heavy-duty thread spool."),
+	ElectricalTape = entry("Electrical Tape", "ElectricalTape", 221, 1, 1, 0.2, v1, "Roll of electrical tape."),
+	GripTape = entry("Grip Tape", "GripTape", 421, 1, 1, 0.2, v1, "Coarse adhesive grip tape."),
+	MeasuringTape = entry("Measuring Tape", "MeasuringTape", 840, 1, 1, 0.4, v1, "Retractable measuring tape."),
+	Disenfectant = entry("Disinfectant", "Disenfectant", 600, 1, 2, 0.3, v1, "Bottle of disinfectant cleaing spray. Don\'t drink it."),
+	Tea = entry("Premium Tea", "Tea", 740, 1, 1, 0.2, v1, "Imported tea."),
+	HydrogenPeroxide = entry("Hydrogen Peroxide", "HydrogenPeroxide", 300, 1, 1, 0.3, v1, "Bottle of peroxide. Disinfects wounds."),
+	Hammer = entry("Hammer", "Hammer", 500, 1, 2, 1, v2, "Old claw hammer. Heavy enough to be a tool or an argument."),
+	BallpeenHammer = entry("Ball-peen Hammer", "BallpeenHammer", 600, 1, 2, 1.1, v2, "Ball-peen hammer. Metalworker\'s hammer."),
+	Wrench = entry("Wrench", "Wrench", 700, 1, 2, 1.2, v2, "Heavy adjustable wrench."),
+	Pliers = entry("Pliers", "Pliers", 560, 1, 1, 0.7, v2, "Pair of pliers. Cuts wire, pulls nails, removes the occasional bullet."),
+	Remote = entry("Remote", "Remote", 400, 1, 1, 0.2, v2, "Plastic TV remote. Can be sold for scraps or valuable electronics."),
+	ClothFabric = entry("Cloth Fabric", "ClothFabric", 500, 2, 1, 0.5, v2, "Bundle of plain cloth."),
+	TextileFabrics = entry("Textile Fabrics", "TextileFabrics", 600, 2, 1, 0.6, v2, "Mixed textile bundle."),
+	ElectronicCable = entry("Electronic Cable", "ElectronicCable", 700, 2, 2, 0.4, v2, "Coil of insulated copper cable. Useful in the right hands."),
+	Capacitors = entry("Capacitors", "Capacitors", 800, 1, 1, 0.3, v2, "Handful of electrolytic capacitors. Stripped from old electronics."),
+	MedicalScraps = entry("Medical Scraps", "MedicalScraps", 500, 2, 2, 0.4, v2, "Random assorted medical paraphernalia."),
+	AntiqueTeapot = entry("Antique Teapot", "AntiqueTeapot", 900, 2, 1, 1, v2, "Potmetal teapot."),
+	Thermometer = entry("Thermometer", "Thermometer", 440, 1, 2, 0.2, v2, "Industiral thermometer."),
+	PressureGauge = entry("Pressure Gauge", "PressureGauge", 760, 1, 2, 0.5, v2, "Industrial pressure gauge. Salvaged from somewhere it shouldn\'t have been touched."),
+	WD40 = entry("WD-40", "WD40", 640, 1, 1, 0.5, v2, "Can of WD-40. Frees rusted bolts and stuck slides."),
+	Jerrycan = entry("Full Jerrycan", "Jerrycan", 1200, 2, 3, 19.5, v3, "Steel jerrycan, filled to the brim."),
+	KerosineFuel = entry("Kerosene Fuel Can", "KerosineFuel", 1800, 2, 2, 6, v3, "Sealed can of kerosene. Lamp fuel, stove fuel, accelerant."),
+	BrokenPhone = entry("Broken Phone", "BrokenPhone", 1400, 1, 1, 0.2, v3, "Cracked smartphone."),
+	BrokenRadio = entry("Broken Radio", "BrokenRadio", 1600, 1, 2, 2.5, v3, "Field radio, casing intact, internals shaken loose. Worth gutting."),
+	GunCleaningLubricant = entry("Gun Cleaning Oil", "GunCleaningLubricant", 1200, 1, 1, 0.3, v3, "Bottle of CLP. Keeps actions running smooth."),
+	Gunpowder = entry("Gunpowder", "Gunpowder", 2000, 1, 2, 0.5, v3, "Container of smokeless poweder. Reloaders pay well for this."),
+	AramidFabrics = entry("Aramid Fabrics", "AramidFabrics", 2200, 2, 1, 0.8, v3, "Sheet of aramid weave."),
+	MedicalTools = entry("Medical Tools", "MedicalTools", 2400, 2, 2, 2, v3, "Tweezers, forceps, scalpels, sutures. Doctors will trade well for these."),
+	SleepingBagRoll = entry("Sleeping Bag Roll", "SleepingBagRoll", 1400, 2, 2, 2.5, v3, "Rolled sleeping bag. Beats sleeping on the floor."),
+	PropaneTank = entry("Propane Tank", "PropaneTank", 2000, 3, 3, 8, v3, "Steel propane tank, half-full."),
+	Camera = entry("Camera", "Camera", 3600, 2, 1, 0.8, v4, "DSLR camera with intact lens. Might have some valuable photos on videos on it."),
+	Tablet = entry("Tablet", "Tablet", 4000, 2, 2, 0.5, v4, "Military tablet. Might have some valuable intel or data in it."),
+	HardDrive = entry("Hard Drive", "HardDrive", 4400, 2, 1, 0.5, v4, "2.5-inch hard drive. Could be anything on it data is currency to some."),
+	CarBattery = entry("Car Battery", "CarBattery", 5000, 3, 3, 12, v4, "Lead-acid car battery."),
+	Toolset = entry("Toolset", "Toolset", 5600, 2, 2, 4, v4, "Complete mechanic\'s toolset. "),
+	GunsmithingTools = entry("Gunsmithing Tools", "GunsmithingTools", 6000, 2, 3, 3.5, v4, "Specialist gunsmithing tools punches, headspace gauges, sight pushers."),
+	GoldWatch = entry("Gold Watch", "GoldWatch", 10000, 1, 1, 0.3, v5, "Genuine gold wristwatch Rolex. Someone\'s gonna be missing this."),
+	["GoPro HERO 8"] = entry("GoPro HERO 8", "GoPro HERO 8", 7000, 1, 1, 0.3, v5, "Action camera, working. Might have footage of Freedom\'s activities with mutants...")
+}
