@@ -401,6 +401,9 @@ exist for a reason).
 
 ## Recommended fix order (biggest win first)
 
+**DO FIRST - confirmed live, not theoretical: L1** (server-owned ammo per
+player+weapon, reject fire/damage at zero, server rate-limit). Then:
+
 1. **Server-side admin check** on all 4 admin remotes (C1) — 10 lines, kills
    total-compromise.
 2. **Per-player inventory/economy mutex** + resolve-by-index-everywhere (H1, C2,
@@ -450,21 +453,39 @@ write the patches.*
 > Observed against a LIVE server with TEST_HARNESS.lua. UNVERIFIED items were
 > reported but still need the server-side-effect proof described beside them.
 
-### L1. Chamber flag + firemode are client-writable (verification shipped as G2, awaiting run)
-**Paths (Dex):** `<GunTool>.Chambered` + `<GunTool>.FireMode` (`2` = auto).
-Pinning Chambered=true once the mag is EMPTY yields continued fire; FireMode=2
-forces full-auto. The game's own fire logic rewrites Chambered, so the pin must
-win every frame, and it only "takes" on an empty gun. NOTE: paths move when
-equipped (`Backpack.Makarov...` -> `Character.Makarov...`).
-**Why it matters:** IF server-accepted, CRITICAL (infinite full-auto). BUT client
-writes to server-owned Values do NOT replicate, so this is visual-only UNLESS the
-client-driven fire pipeline forwards shots the server honors without its own ammo
-check. Relates to C4 (ModTable trust), C6 (ammo authority), M1 (weapon bridges).
-**Verification (harness G2, v1.9):** equip gun, pick AI victim, empty the mag,
-run G2: it pins Chambered=true + FireMode=2 for 15s (auto-clicker included) while
-you hold the trigger on the victim, then snapshots victim HP. HP dropped from an
-EMPTY mag = CONFIRMED server-side. Next after confirm: spy which remote carries
-each shot, then patch = server-owned ammo/chamber per player.
+### L1. CONFIRMED CRITICAL: pinned Chambered + FireMode=2 = infinite server-accepted full-auto
+**Status:** owner-verified LIVE 2026-09-09 (manual Dex repro; harness G1/G2 built
+to automate it). First confirmed critical of this audit.
+**Repro:** equip gun -> Dex-set `<GunTool>.FireMode = 2` -> empty the mag
+legitimately -> pin `<GunTool>.Chambered = true` every frame (a plain set loses:
+the fire code rewrites it) -> hold trigger. Shots continue past empty AND
+hostiles take damage / die. Harness G2 automates this (pins 15s, snapshots
+victim HP; FAIL = damage from an empty mag).
+**Root cause:** the fire pipeline is client-driven - the client decides "may fire"
+from its own Chambered/FireMode/ammo values and forwards shots the server applies
+WITHOUT a server-side ammo check on the damage path. (C4c's 7->0 decrement was
+either local sim or a counter the damage path never consults; either way the
+damage path doesn't gate on ammo. This also CONFIRMS C6.)
+**Impact:** infinite ammo + forced full-auto on any gun carrying these flags;
+uncapped PvE/PvP DPS, zero ammo economy. Trivial to script (set 1 value + pin
+1 flag). Check every gun via G1 - if they share the flags, they share the bug.
+**Fix (server-side):**
+1. Server owns ammo per player+weapon (`serverMag`), changed ONLY by
+   server-validated reloads (reserve > 0, correct mag type); replicate DOWN for UI.
+2. On EVERY fire/damage request (`PlayerFire` + `BulletHit` bridges): if
+   `serverMag <= 0` -> REJECT (no damage, no decrement). Else decrement exactly
+   1, then apply damage.
+3. Damage numbers from SERVER weapon tables only (never client ModTable);
+   validate hit part (head vs torso) server-side. (C4a-close retest still open.)
+4. Server rate-limit per player from weapon stats (min interval); drop excess
+   fire requests. Caps even visual-auto abuse.
+5. Treat client `Chambered`/`FireMode`/`LoadedRounds`/`ReloadLockUntil` as
+   cosmetics: never read them server-side; allowed rate derives from weapon TYPE.
+6. Optional: count rejected fire-at-zero per player; sustained patterns =
+   exploit telemetry (legit players only blip it on empty-clicks).
+**Re-verify after patch:** G2 from empty mag -> INFO/no-damage; C4c full mag ->
+decrements exactly to 0 then stops; legit fire+reload loop unaffected; C4b burst
+-> capped.
 
 ### L2. Gun fire-pipeline state is client-side (recon only) - harness G1 dump
 **Observed on Makarov (all client-writable):** attributes `CurrentMagRounds`,
