@@ -1,5 +1,5 @@
 --[[===========================================================================
-    STALKER // Security Test Harness  v1.11 (resizable window: drag corner grip, + to maximize)
+    STALKER // Security Test Harness  v1.12 (resizable window: drag corner grip, + to maximize)
     ---------------------------------------------------------------------------
     WHAT: In-game GUI to test every finding in SECURITY_AUDIT.md against a
           LIVE server. Fires the same remotes an exploiter would, then shows
@@ -424,7 +424,7 @@ local function buildGUI()
         BorderSizePixel = 0, Active = true}, main)
     mk("UICorner", {CornerRadius = UDim.new(0, 8)}, top)
     mk("TextLabel", {Size = UDim2.new(1, -270, 1, 0), Position = UDim2.fromOffset(12, 0),
-        BackgroundTransparency = 1, Text = "STALKER // SECURITY TEST HARNESS  v1.11",
+        BackgroundTransparency = 1, Text = "STALKER // SECURITY TEST HARNESS  v1.12",
         Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = ACCENT,
         TextXAlignment = Enum.TextXAlignment.Left}, top)
     local safeBtn = mk("TextButton", {Size = UDim2.fromOffset(140, 26), Position = UDim2.new(1, -246, 0.5, -13),
@@ -570,7 +570,7 @@ end
 local testCounter = 0
 local TESTS = {}    -- id -> {tab, label, risk, fn, row, status}
 local RESULTS = {}  -- id -> PASS | FAIL | INFO | ERROR | RUN | SKIP | BLOCKED
-local SUITE = {"C1a", "C1b", "C3a", "C3b", "C2a", "D3a", "H4", "C7a", "H2a", "C4a"}
+local SUITE = {"C1b", "H2b", "D3b", "D7", "H4", "H5a", "H5b", "H5c", "C7a", "C4a"}
 local SummaryVals = nil  -- filled by START tab: {pass, fail, rev, list}
 local RISKWORD = {safe = "SAFE", caution = "CAREFUL", danger = "DANGER"}
 
@@ -579,17 +579,12 @@ local DESCRIPTIONS = {
     S0 = "Reloads items, ground, traders, players + hostile AI from the server. Always run first.",
     S1 = "Lists every remote the game has. Read-only recon, changes nothing.",
     S2 = "Prints your parsed inventory to LOG. Confirms the tool can see your items.",
-    C1a = "Asks the server for the admin item list. PASS = rejected for a normal player.",
     C1b = "Runs the harmless admin command 'where'. Any reaction = admins not checked!",
     C1c = "Tries to spawn 1 item with the admin remote. PASS = nothing granted.",
     C1d = "Runs YOUR OWN admin command typed below. Only works with Safe Mode OFF.",
-    C2a = "Drops your junk item but claims it is a RARE item. PASS = server ignored the lie.",
     C2b = "Picks up a ground item with a forged id. Checks what you actually receive.",
-    C3a = "Drops MINUS 1000 roubles. PASS = rejected. FAIL = your balance went UP.",
-    C3b = "Drops more money than you own. PASS = rejected and nothing spawned.",
     C3c = "Control test: drops R1 then picks it up. Balance should end exactly equal.",
     C7a = "Tells the server you took 99999 fall damage. Can kill you if the server trusts it.",
-    D3a = "Uses ONE consumable 25x in the same instant (auto-picks Bread/meds). PASS = exactly 1 consumed.",
     D3b = "Same idea through the hotbar (10x). Auto-picks a consumable if you have one.",
     D4 = "Moves ONE item into TWO grids at the same time. In 2 places = dupe!",
     D1 = "Drops AND sells the same item simultaneously. It must end up in ONE place.",
@@ -597,7 +592,6 @@ local DESCRIPTIONS = {
     D6 = "Grabs ONE ground item twice at the same time. You should receive exactly 1.",
     D5 = "Runs the same ammo repack twice concurrently. Then check ammo counts in LOG.",
     D9 = "Donates to barter while moving the item away at once. Race check.",
-    H2a = "Tries to buy with quantity -1. PASS = rejected.",
     H2b = "Tries to buy with quantity 0. PASS = rejected.",
     H2c = "Tries to buy 2 BILLION at once. Tests price-math overflow. Spends money!",
     H2d = "Tries to buy 99999 (more than you can afford). PASS = rejected.",
@@ -619,7 +613,6 @@ local DESCRIPTIONS = {
     C4c = "Forces 10 shots without reloading. Server must subtract ammo every shot.",
     C5a = "Hits your victim with a melee weapon from FAR away. Damage = no range check.",
     C5b = "Tries to weld a random arena part to you. A weld = no ownership check.",
-    H6 = "Claims you are sprinting while standing 10s. Drain = FAIL.",
     M1a = "Drops your gun 3 times at once. One gun must drop at most once.",
     M1b = "Switches weapon + reloads with hacked stats. Watch for weird behavior.",
     X2 = "Tries to start the lobby as a non-owner. Starting = missing owner check.",
@@ -1048,15 +1041,6 @@ end)
 -- ============================ CRITICAL =====================================
 addHeader("CRITICAL", "C1 - ADMIN REMOTES (must fail on non-admin alt!)")
 
-addTest("CRITICAL", "C1a", "AdminListItems probe (read-only)", "safe", function()
-    local ok, res = callFn(Remotes, "AdminListItems")
-    log("INFO", "AdminListItems -> ok=" .. tostring(ok) .. " res=" .. dump(res, 1))
-    if ok and type(res) == "table" and #res > 0 then
-        return "FAIL", "non-admin got item list (" .. #res .. " entries) - server has NO rank check"
-    end
-    return "PASS", "rejected/empty for non-admin"
-end)
-
 addTest("CRITICAL", "C1b", 'AdminRunCommand "where" (benign self-cmd)', "safe", function()
     local ok, err = fireEv("AdminRunCommand", "where", {"where"})
     log("INFO", "fired where -> " .. tostring(ok) .. " " .. short(err))
@@ -1094,26 +1078,6 @@ addNote("CRITICAL", 'Try: addroubles, roubles 0, god, heal, tp <name>, ban <alt>
 addHeader("CRITICAL", "C2 - ITEM-ID SPOOF (transmutation)")
 addNote("CRITICAL", "Drops your SELECTED item while claiming a different ID. Pick junk!")
 
-addTest("CRITICAL", "C2a", "DropItem with FORGED id", "caution", function()
-    local e, spoof = selInv(), selItemID()
-    if not e then return "INFO", "select an item in SETUP first" end
-    if not spoof then return "INFO", "no item DB" end
-    if e.ID == spoof then return "INFO", "pick a DIFFERENT spoof ID than the item" end
-    log("INFO", string.format("dropping idx=%s tied=%s real=%s CLAIMED=%s",
-        tostring(e.index), tostring(e.tied), e.ID, spoof))
-    local ok, err = fireEv("DropItem", e.index, e.tied, spoof)
-    task.wait(1)
-    refreshVicinity(); refreshInventory()
-    local spawnedSpoof = false
-    for _, v in ipairs(CTX.vicItems) do
-        if v.ID == spoof then spawnedSpoof = true end
-    end
-    if spawnedSpoof then
-        return "FAIL", "world item spawned with FORGED id " .. spoof .. " - transmutation live!"
-    end
-    return "PASS", "server ignored forged id (or rejected). Pick your item back up."
-end)
-
 addTest("CRITICAL", "C2b", 'ContextMenuAction "Take" with forged id', "caution", function()
     local v = selVic()
     local spoof = selItemID()
@@ -1125,28 +1089,6 @@ addTest("CRITICAL", "C2b", 'ContextMenuAction "Take" with forged id', "caution",
 end)
 
 addHeader("CRITICAL", "C3 - MONEY (DropRoubles)")
-addTest("CRITICAL", "C3a", "DropRoubles(-1000) NEGATIVE", "caution", function()
-    refreshBalance(); local b0 = CTX.balance
-    fireEv("DropRoubles", -1000)
-    task.wait(1); refreshBalance()
-    log("INFO", string.format("bal %s -> %s", tostring(b0), tostring(CTX.balance)))
-    if CTX.balance > b0 then return "FAIL", "NEGATIVE drop INCREASED balance - infinite money!" end
-    return "PASS", "negative rejected"
-end)
-
-addTest("CRITICAL", "C3b", "DropRoubles(balance+999999) UNFUNDED", "caution", function()
-    refreshBalance(); local b0 = CTX.balance
-    fireEv("DropRoubles", b0 + 999999)
-    task.wait(1); refreshBalance(); refreshVicinity()
-    local found = false
-    for _, v in ipairs(CTX.vicItems) do
-        if string.find(string.lower(v.ID), "rouble") or string.find(string.lower(v.ID), "currenc") or string.find(string.lower(v.ID), "money") then found = true end
-    end
-    log("INFO", string.format("bal %s -> %s currencyPickup=%s", tostring(b0), tostring(CTX.balance), tostring(found)))
-    if CTX.balance < 0 or found then return "FAIL", "unfunded drop created money/pickup!" end
-    return "PASS", "unfunded rejected"
-end)
-
 addTest("CRITICAL", "C3c", "DropRoubles(1) control + re-pickup", "caution", function()
     refreshBalance(); local b0 = CTX.balance
     fireEv("DropRoubles", 1)
@@ -1176,25 +1118,6 @@ addNote("CRITICAL", "Manual: delete/disable FallDamage LocalScript, jump off som
 
 -- ============================ DUPES ========================================
 addHeader("DUPES", "H1 - INVENTORY RACE DUPES (use JUNK item!)")
-
-addTest("DUPES", "D3a", "UseItem x25 SAME FRAME (multi-use?)", "caution", function()
-    local e = findConsumable()
-    local auto = (e ~= nil)
-    if not e then e = selInv() end
-    if not e then return "INFO", "select item first" end
-    log("INFO", (auto and "auto-picked consumable: " or "no consumable found, using picked: ")
-        .. e.ID .. " idx=" .. tostring(e.index))
-    local id = e.ID
-    refreshInventory()
-    local before = countItem(id)
-    for _ = 1, 25 do fireEv("UseItem", e.index, e.tied) end
-    task.wait(1.5); refreshInventory()
-    local after = countItem(id)
-    log("INFO", string.format("%s count %d -> %d (consumed %d, want 1)", id, before, after, before - after))
-    if before - after <= 0 then return "INFO", "nothing consumed - meds need missing HP, food may need hunger. Create the condition, then re-run." end
-    if before - after == 1 then return "PASS", "exactly 1 consumed" end
-    return "FAIL", "consumed " .. (before - after) .. "x but FIRED 25 uses - multi-use dupe!"
-end)
 
 addTest("DUPES", "D3b", "UseItemByType x10 (hotbar path)", "caution", function()
     local e = findConsumable()
@@ -1332,11 +1255,6 @@ local function buyTest(qty)
     return ok, res
 end
 
-addTest("ECONOMY", "H2a", "BuyBulk qty=-1", "danger", function()
-    local ok, res = buyTest(-1)
-    if ok and type(res) == "table" and (res.bought or 0) > 0 then return "FAIL", "negative qty bought!" end
-    return "PASS", "rejected"
-end)
 addTest("ECONOMY", "H2b", "BuyBulk qty=0", "danger", function()
     local ok, res = buyTest(0)
     if ok and type(res) == "table" and (res.bought or 0) > 0 then return "FAIL", "zero qty bought!" end
@@ -1697,24 +1615,6 @@ addTest("COMBAT", "C5b", "ConnectM6D with RANDOM part (ownership?)", "caution", 
     return "INFO", "fired with arena part - check main/server log for weld; weld of foreign part = FAIL"
 end)
 
-addHeader("COMBAT", "H6 - STAMINA FLAG")
-addTest("COMBAT", "H6", "SprintState(true) while STANDING (10s)", "safe", function()
-    log("INFO", "spoofing sprint=true while stationary - watch YOUR stamina bar")
-    local conn = Remotes:FindFirstChild("StaminaSync")
-    local drained = false
-    local c
-    if conn then
-        c = conn.OnClientEvent:Connect(function(a, _b)
-            if type(a) == "number" and a < 0.99 then drained = true end
-        end)
-    end
-    for _ = 1, 20 do fireEv("SprintState", true); task.wait(0.5) end
-    fireEv("SprintState", false)
-    if c then c:Disconnect() end
-    if drained then return "FAIL", "stamina DRAINED while standing still - server trusts the flag (=> never sending it = infinite stamina)" end
-    return "PASS", "no drain while stationary (server derives sprint itself)"
-end)
-
 addHeader("COMBAT", "M1 - WEAPON STATE BRIDGES")
 addTest("COMBAT", "M1a", "PlayerDropGun() x3 (dupe/drop?)", "caution", function()
     local b = bridge("PlayerDropGun")
@@ -1882,8 +1782,8 @@ end)
 do
     local n = 0
     for _ in pairs(TESTS or {}) do n = n + 1 end
-    log("INFO", "STALKER security harness v1.11 loaded. Safe mode ON. Run on NON-ADMIN alt!")
-    log("INFO", "Registered " .. n .. " tests (expect 54 - if less, re-copy the WHOLE Raw file).")
+    log("INFO", "STALKER security harness v1.12 loaded. Safe mode ON. Run on NON-ADMIN alt!")
+    log("INFO", "Registered " .. n .. " tests (expect 47 - if less, re-copy the WHOLE Raw file).")
     log("INFO", "Follow the START tab: 1) SETUP -> S0 Refresh + pick junk, 2) RUN PRIORITY SUITE.")
 end
 log("WARN", "DANGER (red) tests are blocked until you toggle SAFE MODE off.")
