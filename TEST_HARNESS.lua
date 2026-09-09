@@ -1,5 +1,5 @@
 --[[===========================================================================
-    STALKER // Security Test Harness  v1.5 (resizable window: drag corner grip, + to maximize)
+    STALKER // Security Test Harness  v1.6 (resizable window: drag corner grip, + to maximize)
     ---------------------------------------------------------------------------
     WHAT: In-game GUI to test every finding in SECURITY_AUDIT.md against a
           LIVE server. Fires the same remotes an exploiter would, then shows
@@ -63,6 +63,8 @@ local CTX = {
     vicItems   = {},  vicSel   = 1,   -- {ID, index, tied}
     npcs       = {},  npcSel   = 1,   -- instances
     players    = {},  playerSel= 1,   -- players (alts first)
+    aitargets  = {},  aiSel      = 1,   -- hostile AI models (solo testing)
+    useAI      = false,                 -- combat victim mode
     itemIDs    = {},  itemSel  = 1,   -- all known item IDs (spoof targets)
     tiedList   = {},                  -- distinct tied strings
     balance    = 0,
@@ -269,6 +271,37 @@ local function refreshPlayers()
     log("INFO", "Players: " .. tostring(#CTX.players) .. " (self listed last)")
 end
 
+local function refreshAI()
+    CTX.aitargets = {}
+    local chars = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Character then chars[p.Character] = true end
+    end
+    local traders = {}
+    for _, n in ipairs(CTX.npcs) do traders[n] = true end
+    for _, d in ipairs(workspace:GetDescendants()) do
+        if d:IsA("Model") and not chars[d] and not traders[d] then
+            local hum = d:FindFirstChildOfClass("Humanoid")
+            local head = d:FindFirstChild("Head")
+            if hum and head and hum.Health > 0 then
+                table.insert(CTX.aitargets, d)
+                if #CTX.aitargets >= 30 then break end
+            end
+        end
+    end
+    CTX.aiSel = 1
+    log("INFO", "Hostile AI candidates: " .. tostring(#CTX.aitargets) .. " (players+traders excluded - verify in dropdown)")
+    for i, m in ipairs(CTX.aitargets) do
+        if i <= 10 then
+            local hum = m:FindFirstChildOfClass("Humanoid")
+            log("INFO", "  [AI" .. i .. "] " .. m:GetFullName() .. " hp=" .. (hum and math.floor(hum.Health) or "?"))
+        end
+    end
+    if #CTX.aitargets == 0 then
+        log("WARN", "No AI found - walk near hostiles (bandits/mutants) and run S0 again.")
+    end
+end
+
 local function refreshItemIDs()
     CTX.itemIDs = {}
     if ItemDatabase then
@@ -363,7 +396,7 @@ local function buildGUI()
         BorderSizePixel = 0, Active = true}, main)
     mk("UICorner", {CornerRadius = UDim.new(0, 8)}, top)
     mk("TextLabel", {Size = UDim2.new(1, -270, 1, 0), Position = UDim2.fromOffset(12, 0),
-        BackgroundTransparency = 1, Text = "STALKER // SECURITY TEST HARNESS  v1.5",
+        BackgroundTransparency = 1, Text = "STALKER // SECURITY TEST HARNESS  v1.6",
         Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = ACCENT,
         TextXAlignment = Enum.TextXAlignment.Left}, top)
     local safeBtn = mk("TextButton", {Size = UDim2.fromOffset(140, 26), Position = UDim2.new(1, -246, 0.5, -13),
@@ -515,7 +548,7 @@ local RISKWORD = {safe = "SAFE", caution = "CAREFUL", danger = "DANGER"}
 
 -- Plain-English explanation shown under every test.
 local DESCRIPTIONS = {
-    S0 = "Reloads your items, ground items, traders, players from the server. Always run first.",
+    S0 = "Reloads items, ground, traders, players + hostile AI from the server. Always run first.",
     S1 = "Lists every remote the game has. Read-only recon, changes nothing.",
     S2 = "Prints your parsed inventory to LOG. Confirms the tool can see your items.",
     C1a = "Asks the server for the admin item list. PASS = rejected for a normal player.",
@@ -551,10 +584,10 @@ local DESCRIPTIONS = {
     E2 = "Tries to wear a skin you do NOT own (typed below). Applied = FAIL.",
     E3 = "ONE-TIME faction pack pick! A non-veteran receiving it = FAIL.",
     G0 = "Shows your equipped gun and its ammo. Read-only, changes nothing.",
-    C4a = "Shoots your ALT in the head with 9999 damage. STAND FAR / BEHIND A WALL!",
-    C4b = "Hits your alt 30 times instantly. Full 30x damage = no rate limit.",
+    C4a = "Shoots your victim (ALT or hostile AI) in the head, 9999 dmg. STAND FAR / BEHIND A WALL!",
+    C4b = "Hits your victim 30 times instantly. Full 30x damage = no rate limit.",
     C4c = "Forces 10 shots without reloading. Server must subtract ammo every shot.",
-    C5a = "Hits your alt with a melee weapon from FAR away. Damage = no range check.",
+    C5a = "Hits your victim with a melee weapon from FAR away. Damage = no range check.",
     C5b = "Tries to weld a random arena part to you. A weld = no ownership check.",
     H6 = "Claims you are sprinting while standing 10s. Drain = FAIL.",
     M1a = "Drops your gun 3 times at once. One gun must drop at most once.",
@@ -803,9 +836,21 @@ local function findMelee()
 end
 
 local function victimHead()
+    -- returns: head, humanoid, displayName, isSelf | nil
+    if CTX.useAI then
+        local m = CTX.aitargets and CTX.aitargets[CTX.aiSel]
+        if not m or not m.Parent then return nil end
+        local head = m:FindFirstChild("Head")
+        local hum = m:FindFirstChildOfClass("Humanoid")
+        if not head or not hum then return nil end
+        return head, hum, m.Name, false
+    end
     local p = selPlayer()
     if not p or not p.Character then return nil end
-    return p.Character:FindFirstChild("Head"), p
+    local head = p.Character:FindFirstChild("Head")
+    local hum = p.Character:FindFirstChildOfClass("Humanoid")
+    if not head or not hum then return nil end
+    return head, hum, p.Name, (p == LocalPlayer)
 end
 
 --// Build all ----------------------------------------------------------------
@@ -839,7 +884,7 @@ addHeader("START", "QUICK START - do this in order")
 addNote("START", "1.  SETUP tab  ->  run S0 Refresh,  then pick a JUNK item + a trader in the dropdowns.")
 addNote("START", "2.  Come back here and press RUN PRIORITY SUITE below (10 key tests, automatic).")
 addNote("START", "3.  Read the summary + the LOG tab. Every red FAIL is a real vulnerability.")
-addNote("START", "4.  Explore the other tabs for deeper tests. Combat tests shoot your ALT - use one!")
+addNote("START", "4.  Explore the other tabs. Combat victim = ALT player or HOSTILE AI (toggle in COMBAT).")
 
 testCounter = testCounter + 1
 local suiteBtn = mk("TextButton", {Size = UDim2.new(1, 0, 0, 42), BackgroundColor3 = Color3.fromRGB(60, 90, 140),
@@ -889,11 +934,11 @@ SummaryVals = {pass = sumP, fail = sumF, rev = sumR, list = sumList}
 addHeader("SETUP", "CONTEXT - refresh first, then pick targets")
 addNote("SETUP", "Run on a NON-ADMIN alt. Pick a JUNK item for destructive tests.")
 
-addTest("SETUP", "S0", "Refresh ALL context (inv, vicinity, npcs, players, db)", "safe", function()
-    refreshInventory(); refreshVicinity(); refreshNPCs(); refreshPlayers(); refreshItemIDs(); refreshBalance()
+addTest("SETUP", "S0", "Refresh ALL context (inv, vicinity, npcs, players, ai, db)", "safe", function()
+    refreshInventory(); refreshVicinity(); refreshNPCs(); refreshAI(); refreshPlayers(); refreshItemIDs(); refreshBalance()
     for _, f in ipairs(SelectorRefresh or {}) do pcall(f) end
-    return "INFO", string.format("inv=%d vic=%d npc=%d players=%d itemIDs=%d bal=%s",
-        #CTX.invItems, #CTX.vicItems, #CTX.npcs, #CTX.players, #CTX.itemIDs, tostring(CTX.balance))
+    return "INFO", string.format("inv=%d vic=%d npc=%d ai=%d players=%d itemIDs=%d bal=%s",
+        #CTX.invItems, #CTX.vicItems, #CTX.npcs, #CTX.aitargets, #CTX.players, #CTX.itemIDs, tostring(CTX.balance))
 end)
 
 table.insert(SelectorRefresh, addDropdown("SETUP", "My item (use JUNK!)", function()
@@ -925,6 +970,15 @@ table.insert(SelectorRefresh, addDropdown("SETUP", "Target player", function()
     end
     return t
 end, function() return CTX.playerSel end, function(i) CTX.playerSel = i end))
+
+table.insert(SelectorRefresh, addDropdown("SETUP", "Hostile AI", function()
+    local t = {}
+    for _, m in ipairs(CTX.aitargets) do
+        local hum = m:FindFirstChildOfClass("Humanoid")
+        table.insert(t, m.Name .. " | hp=" .. (hum and math.floor(hum.Health) or "?"))
+    end
+    return t
+end, function() return CTX.aiSel end, function(i) CTX.aiSel = i end))
 
 table.insert(SelectorRefresh, addDropdown("SETUP", "Spoof item ID", function()
     return CTX.itemIDs
@@ -1374,7 +1428,20 @@ end)
 
 -- ============================ COMBAT =======================================
 addHeader("COMBAT", "C4 - GUN TRUST (needs consenting ALT victim!)")
-addNote("COMBAT", "DANGER tests damage the TARGET player. Use your own alt, private server.")
+addNote("COMBAT", "DANGER tests damage the VICTIM. Solo? Use HOSTILE AI via the toggle. Private server!")
+testCounter = testCounter + 1
+local victimBtn = mk("TextButton", {Size = UDim2.new(1, 0, 0, 34), BackgroundColor3 = Color3.fromRGB(70, 60, 40),
+    Text = "VICTIM: ALT PLAYER  (click = HOSTILE AI)", Font = Enum.Font.GothamBold, TextSize = 13,
+    TextColor3 = TXT, BorderSizePixel = 0, LayoutOrder = testCounter}, contentFrames["COMBAT"])
+mk("UICorner", {CornerRadius = UDim.new(0, 6)}, victimBtn)
+victimBtn.MouseButton1Click:Connect(function()
+    CTX.useAI = not CTX.useAI
+    victimBtn.Text = CTX.useAI
+        and ("VICTIM: HOSTILE AI (" .. #(CTX.aitargets or {}) .. " found)  (click = ALT PLAYER)")
+        or "VICTIM: ALT PLAYER  (click = HOSTILE AI)"
+    victimBtn.BackgroundColor3 = CTX.useAI and Color3.fromRGB(90, 50, 50) or Color3.fromRGB(70, 60, 40)
+    log("WARN", "Combat victim = " .. (CTX.useAI and "HOSTILE AI (pick one in the SETUP dropdown)" or "ALT PLAYER"))
+end)
 
 addTest("COMBAT", "G0", "Inspect equipped gun + ammo", "safe", function()
     local gun = findGun()
@@ -1398,15 +1465,14 @@ local evilMod = {
 addTest("COMBAT", "C4a", "BulletHit victim HEAD (LOS/range test)", "danger", function()
     local gun = findGun()
     if not gun then return "INFO", "equip a gun first" end
-    local head, p = victimHead()
-    if not head then return "INFO", "need target player with character" end
-    if p == LocalPlayer then return "INFO", "pick your ALT as target, not yourself" end
+    local head, hum, vname, isSelf = victimHead()
+    if not head then return "INFO", CTX.useAI and "no AI target - run S0 near hostiles, pick one in SETUP" or "need target player with character" end
+    if isSelf then return "INFO", "pick your ALT, not yourself (or switch victim to HOSTILE AI)" end
     local b, err = bridge("BulletHit")
     if not b then return "INFO", "no BulletHit bridge: " .. short(err) end
-    local hum = p.Character:FindFirstChildOfClass("Humanoid")
     local h0 = hum.Health
     local dist = (LocalPlayer.Character.HumanoidRootPart.Position - head.Position).Magnitude
-    log("INFO", string.format("victim=%s hp=%s dist=%.1f (stand FAR / behind WALL)", p.Name, tostring(h0), dist))
+    log("INFO", string.format("victim=%s hp=%s dist=%.1f (stand FAR / behind WALL)", vname, tostring(h0), dist))
     pcall(function()
         b:Fire(gun, {Position = head.Position, Normal = Vector3.yAxis, Instance = head},
             CFrame.new(head.Position), evilMod)
@@ -1422,11 +1488,11 @@ end)
 addTest("COMBAT", "C4b", "BulletHit x30 BURST (rate-limit test)", "danger", function()
     local gun = findGun()
     if not gun then return "INFO", "equip a gun first" end
-    local head, p = victimHead()
-    if not head or p == LocalPlayer then return "INFO", "need ALT target" end
+    local head, hum, vname, isSelf = victimHead()
+    if not head or isSelf then return "INFO", "need victim: ALT player or HOSTILE AI (toggle above)" end
     local b = bridge("BulletHit")
     if not b then return "INFO", "no bridge" end
-    local hum = p.Character:FindFirstChildOfClass("Humanoid")
+    log("INFO", "victim=" .. vname)
     local h0 = hum.Health
     for _ = 1, 30 do
         pcall(function()
@@ -1462,12 +1528,11 @@ addHeader("COMBAT", "C5 - MELEE TRUST")
 addTest("COMBAT", "C5a", "Melee hit victim from RANGE", "danger", function()
     local tool = findMelee()
     if not tool then return "INFO", "equip/hold a MELEE weapon first" end
-    local head, p = victimHead()
-    if not head or p == LocalPlayer then return "INFO", "need ALT target" end
-    local hum = p.Character:FindFirstChildOfClass("Humanoid")
+    local head, hum, vname, isSelf = victimHead()
+    if not head or isSelf then return "INFO", "need victim: ALT player or HOSTILE AI (toggle above)" end
     local h0 = hum.Health
     local dist = (LocalPlayer.Character.HumanoidRootPart.Position - head.Position).Magnitude
-    log("INFO", string.format("victim=%s hp=%s dist=%.1f (stand FAR away)", p.Name, tostring(h0), dist))
+    log("INFO", string.format("victim=%s hp=%s dist=%.1f (stand FAR away)", vname, tostring(h0), dist))
     pcall(function()
         tool.Remotes.RemoteEventMelee:FireServer(head, head.Position, Vector3.yAxis)
     end)
@@ -1689,7 +1754,7 @@ end)
 do
     local n = 0
     for _ in pairs(TESTS or {}) do n = n + 1 end
-    log("INFO", "STALKER security harness v1.5 loaded. Safe mode ON. Run on NON-ADMIN alt!")
+    log("INFO", "STALKER security harness v1.6 loaded. Safe mode ON. Run on NON-ADMIN alt!")
     log("INFO", "Registered " .. n .. " tests (expect 53 - if less, re-copy the WHOLE Raw file).")
     log("INFO", "Follow the START tab: 1) SETUP -> S0 Refresh + pick junk, 2) RUN PRIORITY SUITE.")
 end
