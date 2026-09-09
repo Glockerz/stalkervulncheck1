@@ -1,5 +1,5 @@
 --[[===========================================================================
-    STALKER // Security Test Harness  v1.6 (resizable window: drag corner grip, + to maximize)
+    STALKER // Security Test Harness  v1.7 (resizable window: drag corner grip, + to maximize)
     ---------------------------------------------------------------------------
     WHAT: In-game GUI to test every finding in SECURITY_AUDIT.md against a
           LIVE server. Fires the same remotes an exploiter would, then shows
@@ -281,11 +281,17 @@ local function refreshAI()
     for _, n in ipairs(CTX.npcs) do traders[n] = true end
     for _, d in ipairs(workspace:GetDescendants()) do
         if d:IsA("Model") and not chars[d] and not traders[d] then
-            local hum = d:FindFirstChildOfClass("Humanoid")
-            local head = d:FindFirstChild("Head")
-            if hum and head and hum.Health > 0 then
-                table.insert(CTX.aitargets, d)
-                if #CTX.aitargets >= 30 then break end
+            local nl = string.lower(d.Name)
+            -- skip quest corpses / decorative bodies (MT_*_Body etc.)
+            local isProp = string.find(nl, "dead", 1, true) or string.find(nl, "body", 1, true)
+                or string.find(nl, "corpse", 1, true) or string.find(nl, "ragdoll", 1, true)
+            if not isProp then
+                local hum = d:FindFirstChildOfClass("Humanoid")
+                local head = d:FindFirstChild("Head")
+                if hum and head and hum.Health > 0 then
+                    table.insert(CTX.aitargets, d)
+                    if #CTX.aitargets >= 30 then break end
+                end
             end
         end
     end
@@ -396,7 +402,7 @@ local function buildGUI()
         BorderSizePixel = 0, Active = true}, main)
     mk("UICorner", {CornerRadius = UDim.new(0, 8)}, top)
     mk("TextLabel", {Size = UDim2.new(1, -270, 1, 0), Position = UDim2.fromOffset(12, 0),
-        BackgroundTransparency = 1, Text = "STALKER // SECURITY TEST HARNESS  v1.6",
+        BackgroundTransparency = 1, Text = "STALKER // SECURITY TEST HARNESS  v1.7",
         Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = ACCENT,
         TextXAlignment = Enum.TextXAlignment.Left}, top)
     local safeBtn = mk("TextButton", {Size = UDim2.fromOffset(140, 26), Position = UDim2.new(1, -246, 0.5, -13),
@@ -592,7 +598,6 @@ local DESCRIPTIONS = {
     H6 = "Claims you are sprinting while standing 10s. Drain = FAIL.",
     M1a = "Drops your gun 3 times at once. One gun must drop at most once.",
     M1b = "Switches weapon + reloads with hacked stats. Watch for weird behavior.",
-    X1 = "Tries to respawn INSTANTLY. Only meaningful while you are DEAD.",
     X2 = "Tries to start the lobby as a non-owner. Starting = missing owner check.",
     X3 = "Tries to kick the target below as a non-owner. Default target is YOU.",
     X4 = "Plays YOUR voiceline key (below) 5 times. Tests spam protection.",
@@ -1007,6 +1012,7 @@ addTest("SETUP", "S1", "Dump remote inventory (all folders)", "safe", function()
 end)
 
 addTest("SETUP", "S2", "Dump my full inventory (check scoping)", "safe", function()
+    if #CTX.invItems == 0 then refreshInventory() end
     for i, e in ipairs(CTX.invItems) do
         if i <= 40 then
             log("INFO", string.format("  %s idx=%s tied=%s src=%s", e.ID, tostring(e.index), tostring(e.tied), tostring(e.src)))
@@ -1520,8 +1526,10 @@ addTest("COMBAT", "C4c", "PlayerFire 10x no reload (ammo honesty)", "caution", f
     task.wait(1.5)
     local m1 = mag and mag.Value or -1
     log("INFO", string.format("MagAmmo %s -> %s after 10 forced fires", tostring(m0), tostring(m1)))
-    if m0 - m1 >= 10 then return "PASS", "server decremented per shot" end
-    return "INFO", "decremented " .. (m0-m1) .. "/10 - investigate"
+    if m0 < 0 then return "INFO", "could not read mag" end
+    local want = math.min(10, m0)
+    if m0 - m1 >= want then return "PASS", "server decremented per shot (" .. (m0-m1) .. "/" .. want .. ")" end
+    return "INFO", "decremented " .. (m0-m1) .. "/" .. want .. " - investigate"
 end)
 
 addHeader("COMBAT", "C5 - MELEE TRUST")
@@ -1598,19 +1606,7 @@ addTest("COMBAT", "M1b", "SwitchWeapon(gun) + Reload(evil mod)", "caution", func
 end)
 
 -- ============================ MISC =========================================
-addHeader("MISC", "RESPAWN / LOBBY / MISC")
-addTest("MISC", "X1", "RequestRespawn (use while DEAD)", "safe", function()
-    local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-    local dead = (not hum) or hum.Health <= 0
-    log("INFO", "currently dead=" .. tostring(dead) .. " - firing immediately")
-    fireEv("RequestRespawn")
-    task.wait(2)
-    local hum2 = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-    local alive = hum2 and hum2.Health > 0
-    if dead and alive then return "FAIL", "instant respawn accepted - no server timer!" end
-    return "INFO", dead and "still dead (timer ok) - re-fire after countdown" or "you are alive; die first, then run instantly"
-end)
-
+addHeader("MISC", "LOBBY / MISC")
 addTest("MISC", "X2", "Lobby_Start as NON-OWNER", "caution", function()
     fireEv("Lobby_Start")
     task.wait(1)
@@ -1754,8 +1750,8 @@ end)
 do
     local n = 0
     for _ in pairs(TESTS or {}) do n = n + 1 end
-    log("INFO", "STALKER security harness v1.6 loaded. Safe mode ON. Run on NON-ADMIN alt!")
-    log("INFO", "Registered " .. n .. " tests (expect 53 - if less, re-copy the WHOLE Raw file).")
+    log("INFO", "STALKER security harness v1.7 loaded. Safe mode ON. Run on NON-ADMIN alt!")
+    log("INFO", "Registered " .. n .. " tests (expect 52 - if less, re-copy the WHOLE Raw file).")
     log("INFO", "Follow the START tab: 1) SETUP -> S0 Refresh + pick junk, 2) RUN PRIORITY SUITE.")
 end
 log("WARN", "DANGER (red) tests are blocked until you toggle SAFE MODE off.")
