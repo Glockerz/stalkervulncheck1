@@ -1,5 +1,5 @@
 --[[===========================================================================
-    STALKER // Security Test Harness  v1.2 (resizable window: drag corner grip, + to maximize)
+    STALKER // Security Test Harness  v1.3 (resizable window: drag corner grip, + to maximize)
     ---------------------------------------------------------------------------
     WHAT: In-game GUI to test every finding in SECURITY_AUDIT.md against a
           LIVE server. Fires the same remotes an exploiter would, then shows
@@ -342,7 +342,7 @@ local function buildGUI()
         BorderSizePixel = 0, Active = true}, main)
     mk("UICorner", {CornerRadius = UDim.new(0, 8)}, top)
     mk("TextLabel", {Size = UDim2.new(1, -270, 1, 0), Position = UDim2.fromOffset(12, 0),
-        BackgroundTransparency = 1, Text = "STALKER // SECURITY TEST HARNESS  v1.2",
+        BackgroundTransparency = 1, Text = "STALKER // SECURITY TEST HARNESS  v1.3",
         Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = ACCENT,
         TextXAlignment = Enum.TextXAlignment.Left}, top)
     local safeBtn = mk("TextButton", {Size = UDim2.fromOffset(140, 26), Position = UDim2.new(1, -246, 0.5, -13),
@@ -486,44 +486,166 @@ function showTab(name)
 end
 
 local testCounter = 0
+local TESTS = {}    -- id -> {tab, label, risk, fn, row, status}
+local RESULTS = {}  -- id -> PASS | FAIL | INFO | ERROR | RUN | SKIP | BLOCKED
+local SUITE = {"C1a", "C1b", "C3a", "C3b", "C2a", "D3a", "H4", "C7a", "H2a", "C4a"}
+local SummaryVals = nil  -- filled by START tab: {pass, fail, rev, list}
+local RISKWORD = {safe = "SAFE", caution = "CAREFUL", danger = "DANGER"}
+
+-- Plain-English explanation shown under every test.
+local DESCRIPTIONS = {
+    S0 = "Reloads your items, ground items, traders, players from the server. Always run first.",
+    S1 = "Lists every remote the game has. Read-only recon, changes nothing.",
+    S2 = "Prints your parsed inventory to LOG. Confirms the tool can see your items.",
+    C1a = "Asks the server for the admin item list. PASS = rejected for a normal player.",
+    C1b = "Runs the harmless admin command 'where'. Any reaction = admins not checked!",
+    C1c = "Tries to spawn 1 item with the admin remote. PASS = nothing granted.",
+    C1d = "Runs YOUR OWN admin command typed below. Only works with Safe Mode OFF.",
+    C2a = "Drops your junk item but claims it is a RARE item. PASS = server ignored the lie.",
+    C2b = "Picks up a ground item with a forged id. Checks what you actually receive.",
+    C3a = "Drops MINUS 1000 roubles. PASS = rejected. FAIL = your balance went UP.",
+    C3b = "Drops more money than you own. PASS = rejected and nothing spawned.",
+    C3c = "Control test: drops R1 then picks it up. Balance should end exactly equal.",
+    C7a = "Tells the server you took 99999 fall damage. Can kill you if the server trusts it.",
+    D3a = "Uses ONE item 25 times in the same instant. PASS = exactly 1 was consumed.",
+    D3b = "Same idea through the hotbar (10x). Checks how many got consumed.",
+    D4 = "Moves ONE item into TWO grids at the same time. In 2 places = dupe!",
+    D1 = "Drops AND sells the same item simultaneously. It must end up in ONE place.",
+    D7 = "Sells the same item 5 times inside one request. PASS = paid at most once.",
+    D6 = "Grabs ONE ground item twice at the same time. You should receive exactly 1.",
+    D5 = "Runs the same ammo repack twice concurrently. Then check ammo counts in LOG.",
+    D9 = "Donates to barter while moving the item away at once. Race check.",
+    H2a = "Tries to buy with quantity -1. PASS = rejected.",
+    H2b = "Tries to buy with quantity 0. PASS = rejected.",
+    H2c = "Tries to buy 2 BILLION at once. Tests price-math overflow. Spends money!",
+    H2d = "Tries to buy 99999 (more than you can afford). PASS = rejected.",
+    H3a = "Reads the barter auto-fill suggestion. Read-only, changes nothing.",
+    H3b = "Donates YOUR OWN currency amount typed below. PASS = rejected or fully paid.",
+    H4 = "Claims the free tutorial starter kit 5 times. PASS = at most one kit, ever.",
+    H5a = "Claims the daily login reward twice at the same time. Both paying = FAIL.",
+    H5b = "Collects pending rewards twice at once. Both paying = double-spend bug.",
+    H5c = "Turns in the main quest twice at once. Both paying = double-spend bug.",
+    H5d = "Turns in the task id typed below, twice. Needs a finished task id.",
+    E1 = "Loads your gun mag 5 times super fast. One mag must fill exactly once.",
+    E2 = "Tries to wear a skin you do NOT own (typed below). Applied = FAIL.",
+    E3 = "ONE-TIME faction pack pick! A non-veteran receiving it = FAIL.",
+    G0 = "Shows your equipped gun and its ammo. Read-only, changes nothing.",
+    C4a = "Shoots your ALT in the head with 9999 damage. STAND FAR / BEHIND A WALL!",
+    C4b = "Hits your alt 30 times instantly. Full 30x damage = no rate limit.",
+    C4c = "Forces 10 shots without reloading. Server must subtract ammo every shot.",
+    C5a = "Hits your alt with a melee weapon from FAR away. Damage = no range check.",
+    C5b = "Tries to weld a random arena part to you. A weld = no ownership check.",
+    H6 = "Claims you are sprinting while standing 10s. Drain = FAIL.",
+    M1a = "Drops your gun 3 times at once. One gun must drop at most once.",
+    M1b = "Switches weapon + reloads with hacked stats. Watch for weird behavior.",
+    X1 = "Tries to respawn INSTANTLY. Only meaningful while you are DEAD.",
+    X2 = "Tries to start the lobby as a non-owner. Starting = missing owner check.",
+    X3 = "Tries to kick the target below as a non-owner. Default target is YOU.",
+    X4 = "Plays YOUR voiceline key (below) 5 times. Tests spam protection.",
+    X5 = "Enters then exits cinematic mode. Checks it grants no free-camera powers.",
+    X6 = "Runs your text through the chat filter. Read-only, changes nothing.",
+    F1 = "Throws garbage data at 16 unused remotes. Any real reply = investigate!",
+    L1 = "Checks YOUR inventory data for OTHER players' names. A hit = info leak.",
+    L2 = "Shows server info (place, job). Read-only, changes nothing.",
+}
+
+local function refreshSummary()
+    if not SummaryVals then return end
+    local p, f, r = 0, 0, 0
+    local failed, review = {}, {}
+    for id, v in pairs(RESULTS) do
+        if v == "PASS" then p = p + 1
+        elseif v == "FAIL" then f = f + 1; table.insert(failed, id)
+        elseif v == "INFO" or v == "ERROR" then
+            r = r + 1
+            table.insert(review, v == "ERROR" and (id .. "!") or id)
+        end
+    end
+    table.sort(failed); table.sort(review)
+    pcall(function()
+        SummaryVals.pass.Text = "PASSED (safe): " .. p
+        SummaryVals.fail.Text = "FAILED (fix me): " .. f
+        SummaryVals.rev.Text = "TO REVIEW: " .. r
+        local lines = {}
+        if #failed > 0 then table.insert(lines, "FIX THESE: " .. table.concat(failed, ", ")) end
+        if #review > 0 then table.insert(lines, "REVIEW: " .. table.concat(review, ", ")) end
+        if #lines == 0 then lines = {"No results yet - run the suite!"} end
+        SummaryVals.list.Text = table.concat(lines, "\n")
+    end)
+end
+
+local function setStatus(id, verdict)
+    local t = TESTS[id]
+    if not t then return end
+    RESULTS[id] = verdict
+    local st, row = t.status, t.row
+    if verdict == "PASS" then
+        st.Text = "[  PASS  ]"; st.TextColor3 = GREEN
+        row.BackgroundColor3 = Color3.fromRGB(26, 48, 30)
+    elseif verdict == "FAIL" then
+        st.Text = "[  FAIL  ]"; st.TextColor3 = RED
+        row.BackgroundColor3 = Color3.fromRGB(54, 26, 28)
+    elseif verdict == "RUN" then
+        st.Text = "[   ...   ]"; st.TextColor3 = YELLOW
+    elseif verdict == "SKIP" or verdict == "BLOCKED" then
+        st.Text = "[" .. verdict .. "]"; st.TextColor3 = YELLOW
+    elseif verdict == "ERROR" then
+        st.Text = "[ ERROR ]"; st.TextColor3 = RED
+    else
+        st.Text = "[  INFO  ]"; st.TextColor3 = GREY
+    end
+    pcall(refreshSummary)
+end
+
+local function runTestSync(id)
+    local t = TESTS[id]
+    if not t then return end
+    if t.risk == "danger" and SAFE_MODE then
+        setStatus(id, "BLOCKED")
+        log("WARN", id .. " blocked by SAFE MODE (toggle it OFF at the top to run red tests)")
+        return
+    end
+    setStatus(id, "RUN")
+    log("TEST", "== " .. id .. ": " .. t.label .. " ==")
+    local ok, verdict, detail = pcall(t.fn)
+    if not ok then
+        setStatus(id, "ERROR")
+        log("WARN", id .. " harness error: " .. short(verdict))
+        return
+    end
+    verdict = verdict or "INFO"
+    setStatus(id, verdict)
+    if detail then log(verdict == "INFO" and "INFO" or verdict, id .. " :: " .. tostring(detail)) end
+end
+
 -- risk: "safe" | "caution" | "danger"
 local function addTest(tab, id, label, risk, fn)
     testCounter = testCounter + 1
-    local row = mk("Frame", {Size = UDim2.new(1, 0, 0, 34), BackgroundColor3 = ROW,
+    local row = mk("Frame", {Size = UDim2.new(1, 0, 0, 58), BackgroundColor3 = ROW,
         BorderSizePixel = 0, LayoutOrder = testCounter}, contentFrames[tab])
     mk("UICorner", {CornerRadius = UDim.new(0, 4)}, row)
-    local dot = mk("Frame", {Size = UDim2.fromOffset(8, 8), Position = UDim2.new(0, 8, 0.5, -4),
+    local dot = mk("Frame", {Size = UDim2.fromOffset(10, 10), Position = UDim2.new(0, 8, 0, 8),
         BackgroundColor3 = RISKCOL[risk] or GREY, BorderSizePixel = 0}, row)
     mk("UICorner", {CornerRadius = UDim.new(1, 0)}, dot)
-    local btn = mk("TextButton", {Size = UDim2.new(1, -120, 1, 0), Position = UDim2.fromOffset(24, 0),
-        BackgroundTransparency = 1, Text = "[" .. id .. "] " .. label,
-        Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = TXT,
+    mk("TextLabel", {Size = UDim2.fromOffset(64, 14), Position = UDim2.fromOffset(22, 6),
+        BackgroundTransparency = 1, Text = RISKWORD[risk] or "", Font = Enum.Font.GothamBold,
+        TextSize = 10, TextColor3 = RISKCOL[risk] or GREY,
+        TextXAlignment = Enum.TextXAlignment.Left}, row)
+    local btn = mk("TextButton", {Size = UDim2.new(1, -120, 0, 22), Position = UDim2.fromOffset(90, 4),
+        BackgroundTransparency = 1, Text = "[" .. id .. "]  " .. label,
+        Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = TXT,
         TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd}, row)
-    local st = mk("TextLabel", {Size = UDim2.new(0, 100, 1, 0), Position = UDim2.new(1, -104, 0, 0),
+    mk("TextLabel", {Size = UDim2.new(1, -128, 0, 28), Position = UDim2.fromOffset(90, 27),
+        BackgroundTransparency = 1, Text = DESCRIPTIONS[id] or "", Font = Enum.Font.Gotham,
+        TextSize = 11, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Left,
+        TextWrapped = true, TextTruncate = Enum.TextTruncate.AtEnd}, row)
+    local st = mk("TextLabel", {Size = UDim2.new(0, 108, 1, 0), Position = UDim2.new(1, -112, 0, 0),
         BackgroundTransparency = 1, Text = "[ -- ]", Font = Enum.Font.GothamBold,
-        TextSize = 12, TextColor3 = GREY, TextXAlignment = Enum.TextXAlignment.Right}, row)
+        TextSize = 13, TextColor3 = GREY, TextXAlignment = Enum.TextXAlignment.Right}, row)
+    TESTS[id] = {tab = tab, label = label, risk = risk, fn = fn, row = row, status = st}
     statusLabels[id] = st
     btn.MouseButton1Click:Connect(function()
-        if risk == "danger" and SAFE_MODE then
-            st.Text = "[BLOCKED]"; st.TextColor3 = YELLOW
-            log("WARN", id .. " blocked by SAFE MODE (toggle off to run)")
-            return
-        end
-        st.Text = "[ ... ]"; st.TextColor3 = YELLOW
-        log("TEST", "== " .. id .. ": " .. label .. " ==")
-        task.spawn(function()
-            local ok, verdict, detail = pcall(fn)
-            if not ok then
-                st.Text = "[ERROR]"; st.TextColor3 = RED
-                log("WARN", id .. " harness error: " .. short(verdict))
-                return
-            end
-            verdict = verdict or "INFO"
-            if verdict == "PASS" then st.Text = "[PASS]"; st.TextColor3 = GREEN
-            elseif verdict == "FAIL" then st.Text = "[FAIL]"; st.TextColor3 = RED
-            else st.Text = "[INFO]"; st.TextColor3 = GREY end
-            if detail then log(verdict == "INFO" and "INFO" or verdict, id .. " :: " .. tostring(detail)) end
-        end)
+        task.spawn(function() runTestSync(id) end)
     end)
 end
 
@@ -1539,7 +1661,7 @@ end)
 do
     local n = 0
     for _ in pairs(TESTS or {}) do n = n + 1 end
-    log("INFO", "STALKER security harness v1.2 loaded. Safe mode ON. Run on NON-ADMIN alt!")
+    log("INFO", "STALKER security harness v1.3 loaded. Safe mode ON. Run on NON-ADMIN alt!")
     log("INFO", "Registered " .. n .. " tests (expect 51 - if less, re-copy the WHOLE Raw file).")
     log("INFO", "Follow the START tab: 1) SETUP -> S0 Refresh + pick junk, 2) RUN PRIORITY SUITE.")
 end
