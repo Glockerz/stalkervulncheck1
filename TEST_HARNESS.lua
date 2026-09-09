@@ -1,5 +1,5 @@
 --[[===========================================================================
-    STALKER // Security Test Harness  v1.8 (resizable window: drag corner grip, + to maximize)
+    STALKER // Security Test Harness  v1.9 (resizable window: drag corner grip, + to maximize)
     ---------------------------------------------------------------------------
     WHAT: In-game GUI to test every finding in SECURITY_AUDIT.md against a
           LIVE server. Fires the same remotes an exploiter would, then shows
@@ -402,7 +402,7 @@ local function buildGUI()
         BorderSizePixel = 0, Active = true}, main)
     mk("UICorner", {CornerRadius = UDim.new(0, 8)}, top)
     mk("TextLabel", {Size = UDim2.new(1, -270, 1, 0), Position = UDim2.fromOffset(12, 0),
-        BackgroundTransparency = 1, Text = "STALKER // SECURITY TEST HARNESS  v1.8",
+        BackgroundTransparency = 1, Text = "STALKER // SECURITY TEST HARNESS  v1.9",
         Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = ACCENT,
         TextXAlignment = Enum.TextXAlignment.Left}, top)
     local safeBtn = mk("TextButton", {Size = UDim2.fromOffset(140, 26), Position = UDim2.new(1, -246, 0.5, -13),
@@ -591,6 +591,7 @@ local DESCRIPTIONS = {
     E3 = "ONE-TIME faction pack pick! A non-veteran receiving it = FAIL.",
     G0 = "Shows your equipped gun and its ammo. Read-only, changes nothing.",
     G1 = "Dumps every flag inside your gun to find chamber + firemode. Paste the dump.",
+    G2 = "Pins Chambered+AUTO 15s while YOU mag-dump the victim from EMPTY. Damage = CONFIRMED.",
     C4a = "Shoots your victim (ALT or hostile AI) in the head, 9999 dmg. STAND FAR / BEHIND A WALL!",
     C4b = "Hits your victim 30 times instantly. Full 30x damage = no rate limit.",
     C4c = "Forces 10 shots without reloading. Server must subtract ammo every shot.",
@@ -1488,6 +1489,61 @@ addTest("COMBAT", "G1", "Dump gun internals (chamber/firemode hunt)", "safe", fu
     return "INFO", "paste this dump - chamber/firemode names exposed above"
 end)
 
+addTest("COMBAT", "G2", "Pin Chambered+AUTO 15s (YOU mag-dump victim)", "caution", function()
+    local gun = findGun()
+    if not gun then return "INFO", "equip a gun first" end
+    if gun.Parent ~= LocalPlayer.Character then
+        return "INFO", "EQUIP the gun (hold it in your hands), then run"
+    end
+    local chamber = gun:FindFirstChild("Chambered")
+    local fmode = gun:FindFirstChild("FireMode")
+    if not chamber or not fmode then
+        return "INFO", "no Chambered/FireMode on " .. gun.Name
+    end
+    local ammo = gun:FindFirstChild("Ammo")
+    local mag = ammo and ammo:FindFirstChild("MagAmmo")
+    local m0 = (mag and mag.Value) or -1
+    if m0 < 0 then return "INFO", "could not read mag" end
+    local head, hum, vname, isSelf = victimHead()
+    if not head or isSelf then
+        return "INFO", "pick a victim first (HOSTILE AI toggle + SETUP picker)"
+    end
+    log("INFO", string.format("gun=%s Mag=%s Chambered=%s(%s) FireMode=%s(%s) victim=%s",
+        gun.Name, tostring(m0), short(chamber.Value), chamber.ClassName,
+        short(fmode.Value), fmode.ClassName, vname))
+    if m0 ~= 0 then
+        return "INFO", "mag must read EMPTY first (fire it dry - pin only takes on empty), then re-run"
+    end
+    local h0 = hum.Health
+    local c0, f0 = chamber.Value, fmode.Value
+    pcall(function() fmode.Value = 2 end)
+    task.wait(0.2)
+    -- pin loop: the game's own fire logic rewrites Chambered, so win every frame
+    local stop = false
+    local conn = RunService.Heartbeat:Connect(function()
+        if stop then return end
+        pcall(function()
+            if chamber.Value ~= true then chamber.Value = true end
+        end)
+    end)
+    log("WARN", "PINNED Chambered+AUTO for 15s - HOLD TRIGGER on " .. vname .. " NOW (auto-clicker also running)")
+    for _ = 1, 30 do
+        pcall(function() gun:Activate() end)
+        task.wait(0.5)
+    end
+    stop = true
+    if conn then conn:Disconnect() end
+    pcall(function() chamber.Value = c0 end)
+    pcall(function() fmode.Value = f0 end)
+    local h1 = h0
+    pcall(function() h1 = hum.Health end)
+    log("INFO", string.format("victim hp %s -> %s (dmg=%s), flags restored", tostring(h0), tostring(h1), tostring(h0 - h1)))
+    if h1 < h0 then
+        return "FAIL", "DAMAGE FROM AN EMPTY MAG while pinned - infinite ammo CONFIRMED server-side!"
+    end
+    return "INFO", "no damage - keep AIMED at the victim the whole window, or server rejected it (visual-only)"
+end)
+
 local evilMod = {
     damage = {Head = 9999, Torso = 9999, Other = 9999},
     fireRate = 0.01, muzzleVelocity = 99999,
@@ -1777,8 +1833,8 @@ end)
 do
     local n = 0
     for _ in pairs(TESTS or {}) do n = n + 1 end
-    log("INFO", "STALKER security harness v1.8 loaded. Safe mode ON. Run on NON-ADMIN alt!")
-    log("INFO", "Registered " .. n .. " tests (expect 53 - if less, re-copy the WHOLE Raw file).")
+    log("INFO", "STALKER security harness v1.9 loaded. Safe mode ON. Run on NON-ADMIN alt!")
+    log("INFO", "Registered " .. n .. " tests (expect 54 - if less, re-copy the WHOLE Raw file).")
     log("INFO", "Follow the START tab: 1) SETUP -> S0 Refresh + pick junk, 2) RUN PRIORITY SUITE.")
 end
 log("WARN", "DANGER (red) tests are blocked until you toggle SAFE MODE off.")

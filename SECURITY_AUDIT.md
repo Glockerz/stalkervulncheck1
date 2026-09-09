@@ -450,14 +450,18 @@ write the patches.*
 > Observed against a LIVE server with TEST_HARNESS.lua. UNVERIFIED items were
 > reported but still need the server-side-effect proof described beside them.
 
-### L1. Chamber flag + firemode are client-writable (UNVERIFIED) - user-reported
-**Report:** forcing the gun's chamber flag to always-ON yields infinite ammo;
-setting firemode to `2` forces fully-automatic fire.
-**Why it matters:** if the server accepts shots/ammo derived from these
-client-side values, this is CRITICAL (infinite full-auto). Relates to C4
-(ModTable trust), C6 (ammo authority), M1 (weapon-state bridges).
-**To confirm (rules out visual-only):** G0 (note real Mag/Reserve) -> pin
-chamber=true, firemode=2 -> mag-dump at a HostileNPC counting rounds past
-Mag+Reserve. CONFIRMED iff damage continues past the real ammo total or the
-mag never decrements while kills land. Then G1-dump the flag names and spy
-which remote carries them, for the patch.
+### L1. Chamber flag + firemode are client-writable (verification shipped as G2, awaiting run)
+**Paths (Dex):** `<GunTool>.Chambered` + `<GunTool>.FireMode` (`2` = auto).
+Pinning Chambered=true once the mag is EMPTY yields continued fire; FireMode=2
+forces full-auto. The game's own fire logic rewrites Chambered, so the pin must
+win every frame, and it only "takes" on an empty gun. NOTE: paths move when
+equipped (`Backpack.Makarov...` -> `Character.Makarov...`).
+**Why it matters:** IF server-accepted, CRITICAL (infinite full-auto). BUT client
+writes to server-owned Values do NOT replicate, so this is visual-only UNLESS the
+client-driven fire pipeline forwards shots the server honors without its own ammo
+check. Relates to C4 (ModTable trust), C6 (ammo authority), M1 (weapon bridges).
+**Verification (harness G2, v1.9):** equip gun, pick AI victim, empty the mag,
+run G2: it pins Chambered=true + FireMode=2 for 15s (auto-clicker included) while
+you hold the trigger on the victim, then snapshots victim HP. HP dropped from an
+EMPTY mag = CONFIRMED server-side. Next after confirm: spy which remote carries
+each shot, then patch = server-owned ammo/chamber per player.
