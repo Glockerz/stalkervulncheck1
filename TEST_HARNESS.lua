@@ -1,5 +1,5 @@
 --[[===========================================================================
-    STALKER // Security Test Harness  v1.13 (resizable window: drag corner grip, + to maximize)
+    STALKER // Security Test Harness  v1.14 (resizable window: drag corner grip, + to maximize)
     ---------------------------------------------------------------------------
     WHAT: In-game GUI to test every finding in SECURITY_AUDIT.md against a
           LIVE server. Fires the same remotes an exploiter would, then shows
@@ -424,7 +424,7 @@ local function buildGUI()
         BorderSizePixel = 0, Active = true}, main)
     mk("UICorner", {CornerRadius = UDim.new(0, 8)}, top)
     mk("TextLabel", {Size = UDim2.new(1, -270, 1, 0), Position = UDim2.fromOffset(12, 0),
-        BackgroundTransparency = 1, Text = "STALKER // SECURITY TEST HARNESS  v1.13",
+        BackgroundTransparency = 1, Text = "STALKER // SECURITY TEST HARNESS  v1.14",
         Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = ACCENT,
         TextXAlignment = Enum.TextXAlignment.Left}, top)
     local safeBtn = mk("TextButton", {Size = UDim2.fromOffset(140, 26), Position = UDim2.new(1, -246, 0.5, -13),
@@ -1114,12 +1114,17 @@ addTest("DUPES", "D3b", "UseItemByType x10 (hotbar path)", "caution", function()
     task.wait(1.5); refreshInventory()
     local after = countItem(e.ID)
     log("INFO", string.format("%s count %d -> %d", e.ID, before, after))
-    return "INFO", "consumed " .. (before - after) .. " for 10 fires (want <=1 effect)"
+    local c0 = before - after
+    if c0 == 0 then return "INFO", "consumed 0 for 10 fires - gate unmet (meds need missing HP, food may need hunger)" end
+    return "INFO", "consumed " .. c0 .. " for 10 fires (want <=1 effect)"
 end)
 
 addTest("DUPES", "D4", "Double-MOVE same index to 2 grids", "caution", function()
     local e = selInv()
     if not e then return "INFO", "select item first" end
+    refreshInventory()
+    local before = countItem(e.ID)
+    log("INFO", "racing " .. e.ID .. " (baseline count=" .. before .. ")")
     local dests = {}
     for _, t in ipairs(CTX.tiedList) do
         if t ~= e.tied then table.insert(dests, t) end
@@ -1133,7 +1138,9 @@ addTest("DUPES", "D4", "Double-MOVE same index to 2 grids", "caution", function(
         task.wait(1.5)
         log("INFO", "r1=" .. dump(r1) .. " r2=" .. dump(r2))
         refreshInventory()
-        return "INFO", "both-accepted + item duplicated = FAIL (check counts)"
+        local after0 = countItem(e.ID)
+        if after0 > before then return "FAIL", "count " .. before .. " -> " .. after0 .. " - DUPE CONFIRMED" end
+        return "INFO", "count " .. before .. " -> " .. after0 .. " (stable = good)"
     end
     local r1, r2
     task.spawn(function() r1 = {callFn(Remotes, "MoveItemAcrossItemManager", e.index, e.tied, dests[1], Vector2.new(0,0), 0)} end)
@@ -1142,9 +1149,14 @@ addTest("DUPES", "D4", "Double-MOVE same index to 2 grids", "caution", function(
     log("INFO", "to " .. tostring(dests[1]) .. " -> " .. dump(r1))
     log("INFO", "to " .. tostring(dests[2]) .. " -> " .. dump(r2))
     refreshInventory()
-    local n = countItem(e.ID)
-    if n > 1 then return "FAIL", "item now exists " .. n .. "x - DUPE CONFIRMED" end
-    return "INFO", "count=" .. n .. ". Exactly one r should be true."
+    local after = countItem(e.ID)
+    local acc1 = r1 and r1[1] == true and r1[2] == true
+    local acc2 = r2 and r2[1] == true and r2[2] == true
+    log("INFO", string.format("count %d -> %d, accepted: move1=%s move2=%s", before, after, tostring(acc1), tostring(acc2)))
+    if after > before then return "FAIL", "count " .. before .. " -> " .. after .. " - DUPE CONFIRMED" end
+    if after < before then return "INFO", "count DROPPED " .. before .. " -> " .. after .. " - item lost?? verify!" end
+    if not acc1 and not acc2 then return "PASS", "both moves denied, count stable" end
+    return "PASS", "count stable (" .. after .. "); exactly one move won = correct"
 end)
 
 addTest("DUPES", "D1", "DropItem + TraderConfirmSell RACE", "caution", function()
@@ -1457,6 +1469,14 @@ addTest("COMBAT", "G2", "Pin Chambered+AUTO 15s (YOU mag-dump victim)", "caution
     if vdist > 500 then
         return "INFO", "victim is " .. string.format("%.0f", vdist) .. "m away - walk CLOSE to it, then re-run"
     end
+    if vdist > 150 then
+        log("WARN", "victim is " .. string.format("%.0f", vdist) .. "m - TP to it! Aiming past 150m is hopeless.")
+    end
+    pcall(function()
+        local hrp0 = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if hrp0 then hrp0.CFrame = CFrame.new(hrp0.Position, head.Position) end
+    end)
+    log("INFO", "facing victim - keep your MOUSE IN THE GAME VIEW (not on buttons) for the full window")
     log("INFO", string.format("gun=%s Mag=%s Chambered=%s(%s) FireMode=%s(%s) victim=%s",
         gun:GetFullName(), tostring(m0), short(chamber.Value), chamber.ClassName,
         short(fmode.Value), fmode.ClassName, vname))
@@ -1486,7 +1506,7 @@ addTest("COMBAT", "G2", "Pin Chambered+AUTO 15s (YOU mag-dump victim)", "caution
     else
         log("WARN", "verify FAILED: FireMode=" .. tostring(fv) .. " Chambered=" .. tostring(cv) .. " - paste this line!")
     end
-    log("WARN", "PINNED Chambered+AUTO for 15s - HOLD TRIGGER on " .. vname .. " NOW (auto-clicker also running)")
+    log("WARN", "PINNED 15s - HOLD TRIGGER on " .. vname .. " NOW. Do NOT click other buttons!")
     for _ = 1, 30 do
         if chamber.Parent == nil or fmode.Parent == nil then
             log("WARN", "gun instance DESTROYED mid-run (re-equip/death?) - pin lost, aborting")
@@ -1780,7 +1800,7 @@ end)
 do
     local n = 0
     for _ in pairs(TESTS or {}) do n = n + 1 end
-    log("INFO", "STALKER security harness v1.13 loaded. Safe mode ON. Run on NON-ADMIN alt!")
+    log("INFO", "STALKER security harness v1.14 loaded. Safe mode ON. Run on NON-ADMIN alt!")
     log("INFO", "Registered " .. n .. " tests (expect 46 - if less, re-copy the WHOLE Raw file).")
     log("INFO", "Follow the START tab: 1) SETUP -> S0 Refresh + pick junk, 2) RUN PRIORITY SUITE.")
 end

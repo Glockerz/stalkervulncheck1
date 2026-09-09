@@ -511,3 +511,11 @@ questions (suite v2 = C1b, H2b, D3b, D7, H4, H5a, H5b, H5c, C4b, C4a).
 - **H6** SprintState while stationary: no stamina drain across 2 runs.
 Deliberately KEPT despite passing: H4 (needs a fresh account to be conclusive), C4c + G2 (L1
 patch regression anchors).
+
+### Harness note (v1.14): D4's "DUPE CONFIRMED" on 2026-09-09 20:18 was a FALSE POSITIVE
+The verdict compared the post-race count to a hardcoded 1 instead of the
+pre-race baseline: the user already owned 3x 9x18mm boxes, both concurrent moves
+were server-denied (`denied` / `Something is already there`), inventory stayed
+16->16. Verdict logic fixed to before/after comparison with denied-aware PASS
+branches. The double-move race (D4) itself remains OPEN; the structured denials
+are a good sign (the move path validates + locks).
