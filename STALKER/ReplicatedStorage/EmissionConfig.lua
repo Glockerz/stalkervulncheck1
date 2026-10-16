@@ -1,0 +1,101 @@
+-- Decompiled with Potassium's decompiler.
+
+local v1 = {
+    ATTR = {
+        Phase = "EmissionPhase",
+        Level = "EmissionLevel",
+        Strike = "EmissionStrike"
+    },
+    PHASE = {
+        None = "None",
+        Omen = "Omen",
+        Buildup = "Buildup",
+        Surge = "Surge",
+        Apex = "Apex",
+        Clearing = "Clearing"
+    },
+    SALT = 9181,
+    WARNING_LEAD = 120,
+    OMEN_LEAD = 20,
+    PLACEMENT_START = 900,
+    BUILDUP_END = 45,
+    SURGE_END = 90,
+    APEX_END = 150,
+    CLEAR_END = 180,
+    BUILDUP_LEVEL = 0.35,
+    SKY_SWAP_LEVEL = 0.5,
+    PUBLISH_HZ = 2,
+    FORECAST_SUPPRESS_BEFORE = 300,
+    EMISSION_RAIN_MAX = 3,
+    BUILDUP_STRIKE_MEAN = 5.5,
+    SURGE_STRIKE_MEAN = 2,
+    STRIKE_MIN_GAP = 1.5,
+    BUILDUP_DISTANCE_MIN = 400,
+    BUILDUP_DISTANCE_MAX = 800,
+    STRIKE_DISTANCE_MIN = 128,
+    STRIKE_DISTANCE_MAX = 512,
+    CLOSE_DISTANCE = 256,
+    RAY_LENGTH = 200,
+    CHECK_HZ = 1,
+    DAMAGE_START_FRACTION = 0.035,
+    DAMAGE_END_FRACTION = 0.07,
+    DAMAGE_RAMP_SECONDS = 20,
+    SURGE_DAMAGE_START_FRACTION = 0.005,
+    SURGE_DAMAGE_END_FRACTION = 0.015,
+    KILL_WINDOW_SECONDS = 5,
+    SPAWN_GRACE_SECONDS = 20,
+    FOLIAGE_PATH = { "Map", "Foliage" },
+    DEATH_CAUSE = "emission",
+    NPC_SPAWN_GRACE_SECONDS = 20,
+    NPC_EMISSION_IMMUNE_ATTRIBUTE = "EmissionImmune"
+};
+v1.SHELTER_LEAD_SECONDS = v1.WARNING_LEAD;
+v1.SHELTER_ATTRIBUTE = "_EmissionSheltering";
+v1.SHELTER_RETRY_SECONDS = 3;
+v1.SHELTER_MAX_DISTANCE = 200;
+v1.SHELTER_WALK_TIMEOUT_SECONDS = 55;
+v1.SHELTER_ARRIVE_STUDS = 8;
+v1.SHELTER_MAX_SECONDS = 420;
+v1.SHELTER_DESPAWN_GRACE_SECONDS = 45;
+v1.SHELTER_SCAN_BEARINGS = 30;
+v1.SHELTER_SCAN_RADII = {
+    20,
+    45,
+    80,
+    125,
+    160,
+    v1.SHELTER_MAX_DISTANCE
+};
+v1.SHELTER_SCAN_UP_STUDS = 2;
+v1.SHELTER_SCAN_DOWN_STUDS = 90;
+v1.SHELTER_SCAN_HEAD_STUDS = 5;
+v1.SHELTER_SCAN_BUDGET_PER_TICK = 8;
+v1.GROUP_VOLUME = 1;
+v1.LOOP_VOLUME = 1;
+v1.RUMBLE_VOLUME = 1;
+v1.EARTHQUAKE_VOLUME = 2;
+v1.EARTHQUAKE_MAX_VOLUME = 1;
+v1.SIREN_VOLUME = 0.5;
+v1.BIRDS_VOLUME = 1;
+v1.FLASH_TINT = Color3.fromRGB(255, 120, 60);
+v1.SHAKE_MAX_MAGNITUDE = 1.2;
+v1.SHAKE_ROUGHNESS = 3.5;
+v1.JOLT_MAGNITUDE = 2.5;
+v1.JOLT_ROUGHNESS = 8;
+v1.JOLT_FADE_OUT = 1;
+v1.THUNDER_VOLUME_SCALE = 1;
+v1.THUNDER_ROLLOFF_MIN_DISTANCE = 1024;
+v1.THUNDER_CLEANUP_TIMEOUT_SECONDS = 30;
+v1.PRESET_NAME = "Emission";
+v1.ALERT_LINE = "EMISSION INBOUND, TAKE COVER";
+v1.ALL_CLEAR_LINE = "EMISSION PASSED, ALL CLEAR";
+v1.ALERT_SPEAKER = {
+    npcId = "ZoneAlert",
+    name = "Zone Alert"
+};
+v1.WARNING_SPEAKER = {
+    npcId = "Ecologist",
+    name = "Ecologist"
+};
+
+return v1;

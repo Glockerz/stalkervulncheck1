@@ -1,0 +1,1 @@
+{"class":"LocalScript","name":"PlayerScriptsLoader","source":"-- Decompiled with Potassium's decompiler.\n\nrequire(script.Parent:WaitForChild(\"PlayerModule\"));"}

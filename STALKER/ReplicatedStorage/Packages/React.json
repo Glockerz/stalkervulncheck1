@@ -1,0 +1,1 @@
+{"class":"ModuleScript","name":"React","source":"-- Decompiled with Potassium's decompiler.\n\nreturn require(script.Parent._Index[\"jsdotlua_react@17.2.1\"].react);"}

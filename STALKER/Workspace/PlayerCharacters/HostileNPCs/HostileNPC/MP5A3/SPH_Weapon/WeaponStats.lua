@@ -1,0 +1,100 @@
+-- Decompiled with Potassium's decompiler.
+
+return {
+    weaponType = "Gun",
+    projectile = "Bullet",
+    magType = 1,
+    SightAtt = "",
+    BarrelAtt = "",
+    UnderBarrelAtt = "",
+    OtherAtt = "",
+    AmmoAtt = "",
+    attachModel = "MP5",
+    operationType = 1,
+    fireRate = 700,
+    muzzleChance = 5,
+    muzzleVelocity = 350,
+    aimSpeed = 0.5,
+    gunLength = 4.5,
+    maxPushback = 1,
+    fireSwitch = { true, true, true, false },
+    fireMode = 2,
+    burstNumber = 3,
+    burstFireRate = nil,
+    spread = 1,
+    shotgun = false,
+    shotgunPellets = 10,
+    aimFovMin = 50,
+    aimTime = 0.5,
+    suppressionLevel = 1,
+    holster = true,
+    holsterOnBackpack = true,
+    holsterPart = "Torso",
+    holsterPosition = CFrame.new(1.244, -0.912, 0.574) * CFrame.Angles(-0.3665191429188092, 0.06981317007977318, 0.10471975511965978),
+
+    calcEjectionForce = function() -- Line: 62
+        local v1 = math.random(10, 10) / 10;
+        local v2 = math.random(10, 10) / 10;
+        local v3 = math.random(10, 10) / -10;
+
+        return Vector3.new(v1, v2, v3);
+    end,
+
+    ADSEnabled = { true, false },
+    damage = {
+        Head = 95,
+        Torso = 28,
+        Other = 20
+    },
+    tracers = false,
+    tracerTiming = 4,
+    tracerColor = Color3.fromRGB(255, 55, 55),
+    ammoType = "9x19mm",
+    shellEject = true,
+    magazineCapacity = 30,
+    arcadeAmmo = true,
+    startAmmoPool = 0,
+    maxAmmoPool = 0,
+    infiniteAmmo = false,
+    startChambered = true,
+    bulletDrop = true,
+    bulletForce = 350,
+    viewmodelOffset = CFrame.new(0, 0, 0),
+    viewmodelScale = 1.2,
+    serverOffset = CFrame.new(0, 0, 0),
+    idleAnim = "MP5A3_Idle",
+    sprintAnim = "MP5A3_Sprint",
+    reloadAnim = "MP5A3_Reload",
+    boltChamber = "MP5A3_Bolt",
+    boltClose = "MP5A3_Bolt",
+    equipAnim = "MP5A3_Equip",
+    patrolAnim = "MP5A3_Sprint",
+    holdUpAnim = "MP5A3_Neutral",
+    holdDownAnim = nil,
+    switchAnim = "MP5A3_Switch",
+    reloadSpeedModifier = 0.9,
+    sprintAnimSpeed = 0.55,
+    rigParts = { "Magazine", "Bolt", "Charging Handle", "Stock" },
+    fireMoveParts = { "Bolt" },
+    boltDist = CFrame.new(-1, 0, 0),
+    emptyLockBolt = false,
+    emptyCloseBolt = false,
+    recoil = {
+        vertical = 3.5,
+        horizontal = 2,
+        camShake = 3,
+        damping = 1,
+        speed = 7,
+        aimReduction = 2.5
+    },
+    gunRecoil = {
+        vertical = 15,
+        horizontal = 3,
+        damping = 2,
+        speed = 10,
+        punchMultiplier = 0.8
+    },
+    explosiveAmmo = false,
+    explosionEffect = "Default",
+    explosionRadius = 30
+};

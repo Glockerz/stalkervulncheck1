@@ -1,0 +1,117 @@
+-- Decompiled with Potassium's decompiler.
+
+local STATES = require(game:GetService("ReplicatedStorage").Modules.DirectionalAnimation.S_Config).STATES;
+
+local function createLookupSet(p1) -- Line: 4
+    local v2 = {};
+
+    for _, v in ipairs(p1) do
+        v2[v] = true;
+    end;
+
+    return v2;
+end;
+
+local v3 = {
+    STATES.WALK,
+    STATES.WALKR,
+    STATES.WALKL,
+    STATES.WALKRIGHT,
+    STATES.WALKLD,
+    STATES.WALKLDR,
+    STATES.WALKRD,
+    STATES.WALKRDR
+};
+local v4 = {
+    STATES.CROUCH_IDLE,
+    STATES.CROUCH_WALK,
+    STATES.CROUCH_WALKR,
+    STATES.CROUCH_WALKL,
+    STATES.CROUCH_WALKRIGHT,
+    STATES.CROUCH_WALKLD,
+    STATES.CROUCH_WALKLDR,
+    STATES.CROUCH_WALKRD,
+    STATES.CROUCH_WALKRDR
+};
+local v5 = {
+    STATES.INJURED_WALK,
+    STATES.INJURED_WALKR,
+    STATES.INJURED_WALKL,
+    STATES.INJURED_WALKRIGHT,
+    STATES.INJURED_WALKLD,
+    STATES.INJURED_WALKLDR,
+    STATES.INJURED_WALKRD,
+    STATES.INJURED_WALKRDR
+};
+local v6 = {
+    STATES.WALKLD,
+    STATES.WALKLDR,
+    STATES.WALKRD,
+    STATES.WALKRDR,
+    STATES.CROUCH_WALKLD,
+    STATES.CROUCH_WALKLDR,
+    STATES.CROUCH_WALKRD,
+    STATES.CROUCH_WALKRDR,
+    STATES.INJURED_WALKLD,
+    STATES.INJURED_WALKLDR,
+    STATES.INJURED_WALKRD,
+    STATES.INJURED_WALKRDR
+};
+local v7 = {
+    STATES = STATES,
+    WALK_STATES = v3,
+    CROUCH_STATES = v4,
+    INJURED_STATES = v5,
+    DIAGONAL_STATES = v6,
+    WALK_TO_CROUCH = {
+        [STATES.IDLE] = STATES.CROUCH_IDLE,
+        [STATES.WALK] = STATES.CROUCH_WALK,
+        [STATES.WALKR] = STATES.CROUCH_WALKR,
+        [STATES.WALKL] = STATES.CROUCH_WALKL,
+        [STATES.WALKRIGHT] = STATES.CROUCH_WALKRIGHT,
+        [STATES.WALKLD] = STATES.CROUCH_WALKLD,
+        [STATES.WALKLDR] = STATES.CROUCH_WALKLDR,
+        [STATES.WALKRD] = STATES.CROUCH_WALKRD,
+        [STATES.WALKRDR] = STATES.CROUCH_WALKRDR
+    },
+    WALK_TO_INJURED = {
+        [STATES.WALK] = STATES.INJURED_WALK,
+        [STATES.WALKR] = STATES.INJURED_WALKR,
+        [STATES.WALKL] = STATES.INJURED_WALKL,
+        [STATES.WALKRIGHT] = STATES.INJURED_WALKRIGHT,
+        [STATES.WALKLD] = STATES.INJURED_WALKLD,
+        [STATES.WALKLDR] = STATES.INJURED_WALKLDR,
+        [STATES.WALKRD] = STATES.INJURED_WALKRD,
+        [STATES.WALKRDR] = STATES.INJURED_WALKRDR
+    }
+};
+local v8 = {};
+
+for _, v in ipairs(v3) do
+    v8[v] = true;
+end;
+
+v7.WALK_STATE_SET = v8;
+local v9 = {};
+
+for _, v in ipairs(v4) do
+    v9[v] = true;
+end;
+
+v7.CROUCH_STATE_SET = v9;
+local v10 = {};
+
+for _, v in ipairs(v5) do
+    v10[v] = true;
+end;
+
+v7.INJURED_STATE_SET = v10;
+local v11 = {};
+
+for _, v in ipairs(v6) do
+    v11[v] = true;
+end;
+
+v7.DIAGONAL_STATE_SET = v11;
+
+return v7;

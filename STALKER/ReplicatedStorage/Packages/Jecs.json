@@ -1,0 +1,1 @@
+{"class":"ModuleScript","name":"Jecs","source":"-- Decompiled with Potassium's decompiler.\n\nreturn require(script.Parent._Index[\"ukendio_jecs@0.10.4\"].jecs);"}
