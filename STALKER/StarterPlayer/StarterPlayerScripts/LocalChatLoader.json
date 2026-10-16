@@ -1,0 +1,1 @@
+{"children":[{"name":"PackageLink","class":"PackageLink"}],"class":"LocalScript","name":"LocalChatLoader","source":"-- Decompiled with Potassium's decompiler.\n\nlocal ReplicatedStorage = game:GetService(\"ReplicatedStorage\");\nrequire(ReplicatedStorage:WaitForChild(\"ChatController\")):Init();"}

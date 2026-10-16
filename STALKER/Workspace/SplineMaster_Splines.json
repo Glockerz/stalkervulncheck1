@@ -1,0 +1,1 @@
+{"class":"Folder","name":"SplineMaster_Splines","children":[{"class":"Folder","name":"Custom_1","children":[{"class":"Configuration","name":"Metadata","children":[{"class":"BoolValue","name":"Closed","props":{"Value":false}}]},{"name":"ControlPoints","class":"Folder"},{"name":"Preview","class":"Folder"}]}]}

@@ -1,0 +1,1 @@
+{"children":[{"name":"PackageLink","class":"PackageLink"}],"class":"LocalScript","name":"LocalTraderLoader","source":"-- Decompiled with Potassium's decompiler.\n\nlocal ReplicatedStorage = game:GetService(\"ReplicatedStorage\");\nrequire(ReplicatedStorage:WaitForChild(\"TraderController\")):Init();"}

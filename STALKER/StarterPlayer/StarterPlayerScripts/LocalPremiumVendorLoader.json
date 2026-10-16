@@ -1,0 +1,1 @@
+{"class":"LocalScript","name":"LocalPremiumVendorLoader","source":"-- Decompiled with Potassium's decompiler.\n\nlocal ReplicatedStorage = game:GetService(\"ReplicatedStorage\");\nrequire(ReplicatedStorage:WaitForChild(\"PremiumVendorController\")):Init();"}

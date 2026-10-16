@@ -1,0 +1,1 @@
+{"class":"Folder","name":"jsdotlua_math@1.2.7","children":[{"children":[{"class":"ModuleScript","name":"clz32","source":"-- Decompiled with Potassium's decompiler.\n\nreturn bit32.countlz;"}],"class":"ModuleScript","name":"math","source":"-- Decompiled with Potassium's decompiler.\n\nreturn {\n    clz32 = require(script:WaitForChild(\"clz32\"))\n};"}]}

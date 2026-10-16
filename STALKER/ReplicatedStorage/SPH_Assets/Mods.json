@@ -1,0 +1,1 @@
+{"class":"ModuleScript","name":"Mods","source":"-- Decompiled with Potassium's decompiler.\n\nlocal _ = script.Parent;\n\nreturn {\n    viewmodelOverride = function(p1: userdata, p2: userdata) -- Line: 9\n        return nil;\n    end,\n\n    onViewmodelRefresh = function(p3: userdata, p4: userdata) -- Line: 26\n    end\n};"}
