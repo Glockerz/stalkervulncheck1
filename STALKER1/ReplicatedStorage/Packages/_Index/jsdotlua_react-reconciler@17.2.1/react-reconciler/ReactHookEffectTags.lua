@@ -1,9 +1,0 @@
--- Saved by UniversalSynSaveInstance (Join to Copy Games) https://discord.gg/wx4ThpAsmw
-
--- https://lua.expert/
-return {
-	NoFlags = 0,
-	HasEffect = 1,
-	Layout = 2,
-	Passive = 4
-}

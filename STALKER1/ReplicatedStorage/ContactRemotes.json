@@ -1,1 +1,0 @@
-{"class":"Folder","name":"ContactRemotes","children":[{"name":"RequestContactList","class":"RemoteFunction"},{"name":"OnContactsUpdated","class":"RemoteEvent"},{"name":"PackageLink","class":"PackageLink"}]}
