@@ -1,0 +1,3068 @@
+-- Lifecycle cleanup only: no client authorization checks or kicks.
+local Runtime = { alive = true, connections = {}, teardown = {} }
+function Runtime:Stop()
+	if not self.alive then return end
+	self.alive = false
+	for _, connection in ipairs(self.connections) do
+		pcall(function() connection:Disconnect() end)
+	end
+	table.clear(self.connections)
+	for _, callback in ipairs(self.teardown) do pcall(callback) end
+	table.clear(self.teardown)
+end
+function Runtime:Connect(signal, callback)
+	local connection = signal:Connect(function(...)
+		if self.alive then callback(...) end
+	end)
+	table.insert(self.connections, connection)
+	return connection
+end
+function Runtime:OnTeardown(callback)
+	table.insert(self.teardown, callback)
+end
+local planName = "PHETAMINE™ Free Beta"
+local planLabel = "Free Beta v2.21"
+pcall(function()
+	local env = getgenv()
+	if env.ZMBI3_TIER == "paid" or env.ZMBI3_TIER == "premium" then
+		planName = "PHETAMINE™ Premium Beta"
+		planLabel = "Premium Beta v2.21"
+	end
+	env.ZMBI3_AUTHENTICATED = nil
+	env.ZMBI3_TIER = nil
+	env.ZMBI3_FETCH_NONCE = nil
+end)
+
+----------------------------------------------------
+-- Services
+----------------------------------------------------
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local Lighting = game:GetService("Lighting")
+local StarterPlayer = game:GetService("StarterPlayer")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local Camera = Workspace.CurrentCamera
+
+----------------------------------------------------
+-- Settings
+----------------------------------------------------
+local Settings = {
+	-- Hostile NPC ESP
+	Enabled = true,
+	ShowBox = true,
+	ShowName = true,
+	ShowDistance = true,
+	ShowTracer = true,
+	ShowSkeleton = false,
+	MaxDistance = 1500,
+	TextSize = 14,
+	Color = Color3.fromRGB(170, 25, 30),
+	RainbowColor = false,
+	TracerOrigin = "Bottom", -- Bottom | Center | Mouse
+
+	-- Player Highlighting (Chams)
+	HighlightPlayers = true,
+	HighlightNPCs = true,
+	PlayerHighlightColor = Color3.fromRGB(0, 170, 255),
+	PlayerHighlightFillTransparency = 0.5,
+	PlayerHighlightOutlineTransparency = 0,
+	PlayerTeamCheck = false,
+
+	-- Weapons & SPH_Weapons
+	AutoChamber = true,
+	AutoFireMode = true,
+	FireModeValue = 2,
+	RemoveFallDamage = true,
+
+	-- Fullbright / hitboxes
+	FullBrightEnabled = false,
+	HitboxEnabled = false,
+	HitboxSize = 8,
+	HitboxTransparency = 0.65,
+	HitboxNPCs = true,
+	HitboxPlayers = false,
+
+	-- Aimlock
+	AimlockEnabled = false,
+	AimlockPart = "Head",
+	AimlockWallCheck = false,
+	AimlockMaxDistance = 2000, -- 0 = unlimited
+	AimlockFOV = 120,
+	AimlockSmoothness = 2,
+	PredictionFactor = 0.08,
+	ShowFOVCircle = true,
+	AimTargetClosest = false, -- false = closest to crosshair, true = closest by distance inside FOV
+	AimTargetNPCs = true,
+	AimTargetPlayers = false,
+
+	-- Movement
+	FlyEnabled = false,
+	FlySpeed = 70,
+	WalkSpeedEnabled = false,
+	WalkSpeed = 24,
+	InfiniteJumpEnabled = false,
+	JumpPowerEnabled = false,
+	JumpPower = 50,
+	NoClipEnabled = false,
+
+	-- Keybinds
+	AimlockKey = Enum.KeyCode.T,
+	AimlockKeyMode = "Toggle",
+
+	-- Aimlock 2 (independent universal aimlock)
+	Aimlock2Enabled = false,
+	Aimlock2Part = "Head",
+	Aimlock2WallCheck = true,
+	Aimlock2MaxDistance = 2000,
+	FlyKey = Enum.KeyCode.Q,
+	FlyKeyMode = "Toggle",
+	ToggleKey = Enum.KeyCode.RightShift,
+	ToggleKeyMode = "Toggle",
+
+	-- UI / configs
+	UITransparency = 0,
+	UIRoundedCorners = false,
+	UICornerRadius = 0,
+	ConfigName = "default",
+	AutoSave = false,
+	AutoLoad = true,
+}
+
+local AIMLOCK_PARTS = { "Head", "HumanoidRootPart", "Torso", "UpperTorso", "LowerTorso" }
+local KEY_MODES = { "Hold", "Toggle" }
+local TARGET_MODES = { "Crosshair", "Closest" }
+local TRACER_ORIGINS = { "Bottom", "Center", "Mouse" }
+
+local R15_BONES = {
+	{ "Head", "UpperTorso" },
+	{ "UpperTorso", "LowerTorso" },
+	{ "UpperTorso", "LeftUpperArm" },
+	{ "LeftUpperArm", "LeftLowerArm" },
+	{ "LeftLowerArm", "LeftHand" },
+	{ "UpperTorso", "RightUpperArm" },
+	{ "RightUpperArm", "RightLowerArm" },
+	{ "RightLowerArm", "RightHand" },
+	{ "LowerTorso", "LeftUpperLeg" },
+	{ "LeftUpperLeg", "LeftLowerLeg" },
+	{ "LeftLowerLeg", "LeftFoot" },
+	{ "LowerTorso", "RightUpperLeg" },
+	{ "RightUpperLeg", "RightLowerLeg" },
+	{ "RightLowerLeg", "RightFoot" },
+}
+
+local R6_BONES = {
+	{ "Head", "Torso" },
+	{ "Torso", "Left Arm" },
+	{ "Torso", "Right Arm" },
+	{ "Torso", "Left Leg" },
+	{ "Torso", "Right Leg" },
+}
+
+local ESP_UPDATE_RATE = 1 / 30
+local ZERO3 = Vector3.zero
+local VEC_HEAD_OFFSET = Vector3.new(0, 0.5, 0)
+local VEC_FEET_OFFSET = Vector3.new(0, 3, 0)
+
+----------------------------------------------------
+-- Fall Damage Remover
+----------------------------------------------------
+-- Exposed to the GUI toggle; internals live in the do-block below so
+-- their registers are freed.
+local hookFallDamageFolder
+do
+	local hookedFolders = setmetatable({}, { __mode = "k" })
+
+	-- Game effect scripts to disable (STALKER): the gas-mask visor/breathing
+	-- and film-grain effects. Set Disabled = true on LocalScript/Script.
+	local DISABLE_SCRIPTS = {
+		GasMaskVisor = true,
+		GasMaskBreathing = true,
+		GrainClient = true,
+	}
+
+	-- Called on every descendant in StarterPlayer/PlayerScripts/character now
+	-- and on every future DescendantAdded. Destroys FallDamage (toggle-gated)
+	-- and disables the named effect scripts.
+	local function controlGameScript(inst)
+		if not inst then return end
+
+		if inst.Name == "FallDamage" then
+			if not Settings.RemoveFallDamage then return end
+			local ok, isScript = pcall(function()
+				return inst:IsA("LocalScript") or inst:IsA("Script")
+			end)
+			if ok and isScript then
+				pcall(function()
+					inst.Disabled = true
+					inst:Destroy()
+				end)
+			end
+			return
+		end
+
+		if DISABLE_SCRIPTS[inst.Name] then
+			local ok, isScript = pcall(function()
+				return inst:IsA("LocalScript") or inst:IsA("Script")
+			end)
+			if ok and isScript then
+				pcall(function() inst.Disabled = true end)
+			end
+		end
+	end
+
+	-- Handle everything present now, then keep handling anything the game
+	-- adds later (descendant signals cover re-parented/recreated scripts).
+	hookFallDamageFolder = function(folder)
+		if not folder or hookedFolders[folder] then return end
+		hookedFolders[folder] = true
+		for _, child in ipairs(folder:GetDescendants()) do
+			controlGameScript(child)
+		end
+		folder.DescendantAdded:Connect(controlGameScript)
+	end
+end
+
+-- FallDamage and the gas-mask/grain scripts live in StarterPlayer /
+-- StarterPlayerScripts (and get copied into PlayerScripts); also sweep the
+-- character, where some games inject them.
+task.spawn(function()
+	pcall(function() hookFallDamageFolder(StarterPlayer) end)
+	local spScripts = StarterPlayer:FindFirstChild("StarterPlayerScripts")
+	if spScripts then pcall(function() hookFallDamageFolder(spScripts) end) end
+	local spCharScripts = StarterPlayer:FindFirstChild("StarterCharacterScripts")
+	if spCharScripts then pcall(function() hookFallDamageFolder(spCharScripts) end) end
+	local pScripts = LocalPlayer:WaitForChild("PlayerScripts", 10)
+	if pScripts then pcall(function() hookFallDamageFolder(pScripts) end) end
+	if LocalPlayer.Character then pcall(function() hookFallDamageFolder(LocalPlayer.Character) end) end
+	Runtime:Connect(LocalPlayer.CharacterAdded, function(char)
+		pcall(function() hookFallDamageFolder(char) end)
+	end)
+end)
+
+----------------------------------------------------
+-- SPH Weapons Manager (Auto Chamber & FireMode 2)
+----------------------------------------------------
+-- Exposed to the GUI / config / heartbeat; internals live in the do-block.
+local scanAllSPHWeapons
+do
+	-- Weak-keyed: Tools get garbage collected after being destroyed/removed.
+	-- record = { conns = {RBXScriptConnection...}, watched = {[Instance]=true} }
+	local TrackedSPHWeapons = setmetatable({}, { __mode = "k" })
+
+	-- Return EVERY descendant of the tool named <name>. SPH kits ship a
+	-- template value inside the SPH_Weapons Configuration but often mutate a
+	-- separate runtime copy elsewhere in the tool; forcing only the first
+	-- match would leave the value the gun actually reads untouched.
+	local function valuesNamed(tool, name)
+		local out = {}
+		local ok, descs = pcall(function() return tool:GetDescendants() end)
+		if not ok or not descs then return out end
+		for _, v in ipairs(descs) do
+			if v.Name == name then table.insert(out, v) end
+		end
+		return out
+	end
+
+	-- Force every Chambered -> true and every FireMode -> configured value
+	-- across the whole tool. Called on change, on new guns, and every frame.
+	local function enforceList(vals)
+		if Settings.AutoChamber then
+			for _, v in ipairs(vals.chambered) do
+				local ok, isBool = pcall(function() return v:IsA("BoolValue") end)
+				if ok and isBool and v.Parent and v.Value ~= true then
+					pcall(function() v.Value = true end)
+				end
+			end
+		end
+		if Settings.AutoFireMode then
+			local desired = tonumber(Settings.FireModeValue) or 2
+			for _, v in ipairs(vals.fireMode) do
+				local ok, isNum = pcall(function() return v:IsA("IntValue") or v:IsA("NumberValue") end)
+				if ok and isNum and v.Parent and v.Value ~= desired then
+					pcall(function() v.Value = desired end)
+				end
+			end
+		end
+	end
+
+	local function enforceTool(tool)
+		if not tool or not tool.Parent then return end
+		if not Settings.AutoChamber and not Settings.AutoFireMode then return end
+		enforceList({ chambered = valuesNamed(tool, "Chambered"), fireMode = valuesNamed(tool, "FireMode") })
+	end
+
+	local function untrack(tool)
+		local record = TrackedSPHWeapons[tool]
+		if not record then return end
+		for _, c in ipairs(record.conns) do
+			pcall(function() c:Disconnect() end)
+		end
+		TrackedSPHWeapons[tool] = nil
+	end
+
+	local function watchValue(tool, value)
+		local conn
+		conn = value:GetPropertyChangedSignal("Value"):Connect(function()
+			-- Re-assert next step so the gun's own write has settled.
+			task.defer(function()
+				if conn.Connected and value.Parent then enforceTool(tool) end
+			end)
+		end)
+		return conn
+	end
+
+	-- Wire a change watcher onto every Chambered/FireMode value in the tool
+	-- that we aren't already watching (values appear/replace over time), and
+	-- cache the live value instances so the per-frame loop allocates nothing.
+	local function refreshWatchers(tool)
+		local record = TrackedSPHWeapons[tool]
+		if not record then return end
+		for _, v in ipairs(valuesNamed(tool, "Chambered")) do
+			if not record.watched[v] then
+				record.watched[v] = true
+				table.insert(record.conns, watchValue(tool, v))
+				if v.Parent then table.insert(record.vals.chambered, v) end
+			end
+		end
+		for _, v in ipairs(valuesNamed(tool, "FireMode")) do
+			if not record.watched[v] then
+				record.watched[v] = true
+				table.insert(record.conns, watchValue(tool, v))
+				if v.Parent then table.insert(record.vals.fireMode, v) end
+			end
+		end
+	end
+
+	local function trackSPHWeapon(tool)
+		if not tool or not tool:IsA("Tool") then return end
+
+		-- A tool with a "SPH_Weapons" Configuration anywhere in it is an SPH gun.
+		local ok, sphConfig = pcall(function() return tool:FindFirstChild("SPH_Weapons", true) end)
+		if not ok or not sphConfig then return end
+
+		local record = TrackedSPHWeapons[tool]
+		if not record then
+			record = {
+				conns = {},
+				watched = setmetatable({}, { __mode = "k" }),
+				vals = { chambered = {}, fireMode = {} },
+			}
+			TrackedSPHWeapons[tool] = record
+
+			-- Values/configuration may replicate or be recreated after the Tool.
+			table.insert(record.conns, tool.DescendantAdded:Connect(function(child)
+				if child.Name == "SPH_Weapons" or child.Name == "Chambered" or child.Name == "FireMode" then
+					task.defer(function()
+						if tool.Parent then
+							refreshWatchers(tool)
+							enforceTool(tool)
+						end
+					end)
+				end
+			end))
+
+			table.insert(record.conns, tool.AncestryChanged:Connect(function(_, parent)
+				if not parent then untrack(tool) end
+			end))
+		end
+
+		refreshWatchers(tool)
+		enforceTool(tool)
+	end
+
+	local function hookWeaponContainer(container)
+		if not container then return end
+		container.ChildAdded:Connect(function(child)
+			if child:IsA("Tool") then
+				-- Values often replicate a frame after the Tool itself.
+				task.defer(function() trackSPHWeapon(child) end)
+				task.delay(0.5, function()
+					if child.Parent then trackSPHWeapon(child) end
+				end)
+			end
+		end)
+		container.DescendantAdded:Connect(function(desc)
+			if desc.Name == "SPH_Weapons" then
+				local tool = desc:FindFirstAncestorWhichIsA("Tool")
+				if tool then task.defer(function() trackSPHWeapon(tool) end) end
+			end
+		end)
+	end
+
+	scanAllSPHWeapons = function()
+		local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
+		if backpack then
+			for _, child in ipairs(backpack:GetChildren()) do
+				if child:IsA("Tool") then trackSPHWeapon(child) end
+			end
+		end
+		local char = LocalPlayer.Character
+		if char then
+			for _, child in ipairs(char:GetChildren()) do
+				if child:IsA("Tool") then trackSPHWeapon(child) end
+			end
+		end
+	end
+
+	-- Per-frame enforcement: when the mag empties the gun flips Chambered to
+	-- false; re-asserting every Heartbeat means it is true again before the
+	-- next frame's fire/reload logic can observe the false. Uses the cached
+	-- value lists so it allocates nothing. Also cleans up tools removed
+	-- without an AncestryChanged signal.
+	Runtime:Connect(RunService.Heartbeat, function()
+		if not Settings.AutoChamber and not Settings.AutoFireMode then return end
+		for tool, record in pairs(TrackedSPHWeapons) do
+			if tool.Parent then
+				enforceList(record.vals)
+			else
+				untrack(tool)
+			end
+		end
+	end)
+
+	task.spawn(function()
+		local backpack = LocalPlayer:WaitForChild("Backpack", 10)
+		if backpack then hookWeaponContainer(backpack) end
+		if LocalPlayer.Character then hookWeaponContainer(LocalPlayer.Character) end
+		Runtime:Connect(LocalPlayer.CharacterAdded, function(char)
+			hookWeaponContainer(char)
+			task.wait(0.5)
+			scanAllSPHWeapons()
+		end)
+		scanAllSPHWeapons()
+	end)
+end
+
+----------------------------------------------------
+-- Drawing helpers (Safe Pool & Hard Cap Protection)
+----------------------------------------------------
+local hasDrawing = false
+pcall(function()
+	if typeof(cleardrawcache) == "function" then
+		cleardrawcache()
+	end
+end)
+do
+	local ok, d = pcall(function()
+		return Drawing.new("Line")
+	end)
+	if ok and d then
+		hasDrawing = true
+		pcall(function() d:Remove() end)
+	end
+end
+
+if not hasDrawing then
+	warn("[PHETAMINE] Drawing API not found; ESP/FOV drawings need an executor with Drawing support.")
+end
+
+local DRAW_FONT = (Drawing and Drawing.Fonts and Drawing.Fonts.UI) or 2
+local MAX_TOTAL_DRAWINGS = 256
+local activeDrawingCount = 0
+
+local function newDrawing(class, props)
+	local realObj = nil
+	if hasDrawing and activeDrawingCount < MAX_TOTAL_DRAWINGS then
+		local ok, inst = pcall(function()
+			return Drawing.new(class)
+		end)
+		if ok and inst then
+			realObj = inst
+			activeDrawingCount = activeDrawingCount + 1
+		end
+	end
+
+	local state = {
+		Visible = false,
+		Color = Color3.new(1, 1, 1),
+		Transparency = 1,
+		Thickness = 1,
+		From = Vector2.zero,
+		To = Vector2.zero,
+		Position = Vector2.zero,
+		Size = Vector2.zero,
+		Text = "",
+		Center = false,
+		Outline = false,
+		Filled = false,
+		Radius = 0,
+		NumSides = 0,
+		Font = DRAW_FONT,
+	}
+
+	for k, v in pairs(props or {}) do
+		state[k] = v
+		if realObj then
+			pcall(function() realObj[k] = v end)
+		end
+	end
+
+	local proxy = {}
+	proxy.__real = realObj
+
+	function proxy:Remove()
+		if realObj then
+			pcall(function()
+				realObj.Visible = false
+				realObj:Remove()
+			end)
+			realObj = nil
+			activeDrawingCount = math.max(0, activeDrawingCount - 1)
+		end
+	end
+
+	function proxy:Destroy()
+		self:Remove()
+	end
+
+	local mt = {
+		__index = function(_, k)
+			if realObj then
+				local ok, val = pcall(function() return realObj[k] end)
+				if ok and val ~= nil then return val end
+			end
+			return state[k]
+		end,
+		__newindex = function(_, k, v)
+			state[k] = v
+			if realObj then
+				pcall(function() realObj[k] = v end)
+			end
+		end,
+	}
+
+	return setmetatable(proxy, mt)
+end
+
+local function removeDrawing(d)
+	if d and d.Remove then
+		pcall(function()
+			d:Remove()
+		end)
+	end
+end
+
+local rainbowHue = 0
+local function currentColor()
+	if Settings.RainbowColor then
+		return Color3.fromHSV(rainbowHue, 1, 1)
+	end
+	return Settings.Color
+end
+
+local ToggleUpdaters = {}
+local function refreshToggle(settingKey)
+	local fn = ToggleUpdaters[settingKey]
+	if fn then fn() end
+end
+
+----------------------------------------------------
+-- Player Highlighting (Chams)
+----------------------------------------------------
+local PlayerHighlights = {}
+local PlayerCharCache = {}
+
+local function disconnectPlayerCache(cache)
+	if not cache then return end
+	if cache.descAdded then pcall(function() cache.descAdded:Disconnect() end); cache.descAdded = nil end
+	if cache.descRemoving then pcall(function() cache.descRemoving:Disconnect() end); cache.descRemoving = nil end
+	if cache.charConn then pcall(function() cache.charConn:Disconnect() end); cache.charConn = nil end
+end
+
+local function rebuildPlayerCharCache(cache, char)
+	cache.char = char
+	cache.hrp = nil
+	cache.head = nil
+	cache.hum = nil
+	cache.parts = cache.parts or {}
+	table.clear(cache.parts)
+
+	if not char then return end
+	for _, inst in ipairs(char:GetDescendants()) do
+		if inst:IsA("BasePart") then
+			cache.parts[inst.Name] = inst
+			if inst.Name == "HumanoidRootPart" then cache.hrp = inst end
+			if inst.Name == "Head" then cache.head = inst end
+		elseif inst:IsA("Humanoid") then
+			cache.hum = inst
+		end
+	end
+	cache.hrp = cache.hrp or char:FindFirstChild("HumanoidRootPart") or char:FindFirstChildWhichIsA("BasePart")
+	cache.head = cache.head or char:FindFirstChild("Head")
+	cache.hum = cache.hum or char:FindFirstChildWhichIsA("Humanoid")
+end
+
+local function cachePlayer(plr, char)
+	local cache = PlayerCharCache[plr]
+	if not cache then
+		cache = { parts = {} }
+		PlayerCharCache[plr] = cache
+	else
+		if cache.descAdded then pcall(function() cache.descAdded:Disconnect() end); cache.descAdded = nil end
+		if cache.descRemoving then pcall(function() cache.descRemoving:Disconnect() end); cache.descRemoving = nil end
+	end
+
+	rebuildPlayerCharCache(cache, char)
+	if char then
+		cache.descAdded = char.DescendantAdded:Connect(function(inst)
+			if inst:IsA("BasePart") then
+				cache.parts[inst.Name] = inst
+				if inst.Name == "HumanoidRootPart" then cache.hrp = inst end
+				if inst.Name == "Head" then cache.head = inst end
+			elseif inst:IsA("Humanoid") then
+				cache.hum = inst
+			end
+		end)
+		cache.descRemoving = char.DescendantRemoving:Connect(function(inst)
+			if inst:IsA("BasePart") and cache.parts[inst.Name] == inst then
+				cache.parts[inst.Name] = nil
+				if cache.hrp == inst then cache.hrp = nil end
+				if cache.head == inst then cache.head = nil end
+			elseif cache.hum == inst then
+				cache.hum = nil
+			end
+		end)
+	end
+	return cache
+end
+
+local function getPlayerCache(plr)
+	local cache = PlayerCharCache[plr]
+	if not cache or cache.char ~= plr.Character then
+		cache = cachePlayer(plr, plr.Character)
+	end
+	return cache
+end
+
+local function isPlayerAlive(cache)
+	local hum = cache and cache.hum
+	return cache and cache.hrp and hum and hum.Health > 0 and hum:GetState() ~= Enum.HumanoidStateType.Dead
+end
+
+local function createPlayerHighlight(plr)
+	if PlayerHighlights[plr] then return PlayerHighlights[plr] end
+	local hl = Instance.new("Highlight")
+	hl.Name = "PHETAMINE_PlayerHL_" .. plr.Name
+	hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	hl.FillColor = Settings.PlayerHighlightColor
+	hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+	hl.FillTransparency = Settings.PlayerHighlightFillTransparency
+	hl.OutlineTransparency = Settings.PlayerHighlightOutlineTransparency
+	hl.Enabled = false
+	hl.Parent = Camera
+
+	PlayerHighlights[plr] = hl
+	return hl
+end
+
+local function destroyPlayerHighlight(plr)
+	local hl = PlayerHighlights[plr]
+	if hl then
+		pcall(function() hl:Destroy() end)
+		PlayerHighlights[plr] = nil
+	end
+	disconnectPlayerCache(PlayerCharCache[plr])
+	PlayerCharCache[plr] = nil
+end
+
+for _, plr in ipairs(Players:GetPlayers()) do
+	if plr ~= LocalPlayer then
+		local cache = cachePlayer(plr, plr.Character)
+		if cache.charConn then cache.charConn:Disconnect() end
+		cache.charConn = plr.CharacterAdded:Connect(function(char)
+			cachePlayer(plr, char)
+		end)
+	end
+end
+
+-- Long-lived signals are owned by the runtime for cleanup.
+Runtime:Connect(Players.PlayerAdded, function(plr)
+	if plr ~= LocalPlayer then
+		local cache = cachePlayer(plr, plr.Character)
+		if cache.charConn then cache.charConn:Disconnect() end
+		cache.charConn = plr.CharacterAdded:Connect(function(char)
+			cachePlayer(plr, char)
+		end)
+	end
+end)
+
+Runtime:Connect(Players.PlayerRemoving, destroyPlayerHighlight)
+
+local function updatePlayerHighlights()
+	local active = Settings.HighlightPlayers
+	local localChar = LocalPlayer.Character
+	local localHrp = localChar and localChar:FindFirstChild("HumanoidRootPart")
+	local localPos = localHrp and localHrp.Position or (Camera and Camera.CFrame.Position) or ZERO3
+	local hlColor = Settings.RainbowColor and currentColor() or Settings.PlayerHighlightColor
+
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LocalPlayer then
+			local hl = createPlayerHighlight(plr)
+			local char = plr.Character
+			local cache = getPlayerCache(plr)
+			local alive = isPlayerAlive(cache)
+			local show = active and alive
+
+			if show and Settings.PlayerTeamCheck and plr.Team and LocalPlayer.Team and plr.Team == LocalPlayer.Team then
+				show = false
+			end
+
+			if show and Settings.MaxDistance > 0 and localPos and cache.hrp then
+				local dist = (localPos - cache.hrp.Position).Magnitude
+				if dist > Settings.MaxDistance then
+					show = false
+				end
+			end
+
+			if show and char then
+				hl.Adornee = char
+				hl.FillColor = hlColor
+				hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+				hl.FillTransparency = Settings.PlayerHighlightFillTransparency
+				hl.OutlineTransparency = Settings.PlayerHighlightOutlineTransparency
+				hl.Enabled = true
+			else
+				hl.Enabled = false
+				hl.Adornee = nil
+			end
+		end
+	end
+end
+
+----------------------------------------------------
+-- Hostile NPCs tracking (Workspace -> PlayerCharacters -> HostileNPCs)
+----------------------------------------------------
+local HostileNPCList = {}
+local HostileNPCCache = {}
+
+local HostileFolderState = {
+	playerCharacters = nil,
+	hostileFolder = nil,
+	conns = {},
+}
+
+local function disconnectNPCCache(cache)
+	if not cache then return end
+	if cache.descAdded then pcall(function() cache.descAdded:Disconnect() end); cache.descAdded = nil end
+	if cache.descRemoving then pcall(function() cache.descRemoving:Disconnect() end); cache.descRemoving = nil end
+	if cache.ancestryConn then pcall(function() cache.ancestryConn:Disconnect() end); cache.ancestryConn = nil end
+end
+
+local function rebuildNPCCache(cache, model)
+	cache.model = model
+	cache.char = model
+	cache.hrp = nil
+	cache.head = nil
+	cache.hum = nil
+	cache.parts = cache.parts or {}
+	table.clear(cache.parts)
+
+	if not model or not model.Parent then return end
+
+	for _, inst in ipairs(model:GetDescendants()) do
+		if inst:IsA("BasePart") then
+			cache.parts[inst.Name] = inst
+			if inst.Name == "HumanoidRootPart" then
+				cache.hrp = inst
+			elseif inst.Name == "Head" then
+				cache.head = inst
+			end
+		elseif inst:IsA("Humanoid") then
+			cache.hum = inst
+		end
+	end
+
+	cache.hrp = cache.hrp
+		or (model:IsA("Model") and model.PrimaryPart)
+		or model:FindFirstChild("HumanoidRootPart")
+		or model:FindFirstChild("Torso")
+		or model:FindFirstChild("UpperTorso")
+		or model:FindFirstChild("LowerTorso")
+		or model:FindFirstChildWhichIsA("BasePart", true)
+		or (model:IsA("BasePart") and model)
+
+	cache.head = cache.head
+		or model:FindFirstChild("Head")
+
+	cache.hum = cache.hum
+		or model:FindFirstChildWhichIsA("Humanoid")
+end
+
+local function isAlive(cache, model)
+	if not cache then return false end
+	if model and not model.Parent then return false end
+	local hrp = cache.hrp
+	if not hrp or not hrp.Parent then return false end
+
+	local hum = cache.hum
+	if hum and hum.Parent then
+		-- Only treat as dead when a humanoid clearly reports death; some NPC
+		-- kits keep a Humanoid at 0 Health while the target is still shootable,
+		-- so require an explicit Dead state (or >0 max health with 0 health).
+		if hum:GetState() == Enum.HumanoidStateType.Dead then
+			return false
+		end
+		if hum.Health <= 0 and hum.MaxHealth > 0 then
+			return false
+		end
+	end
+
+	if model then
+		local attrHp = model:GetAttribute("Health")
+		if type(attrHp) == "number" and attrHp < 0 then
+			return false
+		end
+		local valHp = model:FindFirstChild("Health")
+		if valHp and (valHp:IsA("NumberValue") or valHp:IsA("IntValue")) and valHp.Value < 0 then
+			return false
+		end
+	end
+
+	return true
+end
+
+local function untrackNPC(model)
+	if not model then return end
+	local cache = HostileNPCCache[model]
+	if cache then
+		disconnectNPCCache(cache)
+		HostileNPCCache[model] = nil
+	end
+
+	for i = #HostileNPCList, 1, -1 do
+		if HostileNPCList[i] == model then
+			table.remove(HostileNPCList, i)
+		end
+	end
+end
+
+local function trackNPC(model)
+	if not model then return end
+	if not (model:IsA("Model") or model:IsA("BasePart")) then return end
+	if not model.Parent then return end
+	if HostileNPCCache[model] then return end
+
+	local cache = { parts = {} }
+	HostileNPCCache[model] = cache
+	rebuildNPCCache(cache, model)
+
+	local function refresh()
+		task.defer(function()
+			if Runtime.alive and HostileNPCCache[model] == cache then
+				rebuildNPCCache(cache, model)
+			end
+		end)
+	end
+	cache.descAdded = model.DescendantAdded:Connect(refresh)
+	cache.descRemoving = model.DescendantRemoving:Connect(refresh)
+
+	cache.ancestryConn = model.AncestryChanged:Connect(function(_, parent)
+		if not parent or not model:IsDescendantOf(Workspace) then
+			untrackNPC(model)
+		end
+	end)
+
+	table.insert(HostileNPCList, model)
+end
+
+local function disconnectHostileState()
+	for _, conn in ipairs(HostileFolderState.conns) do
+		pcall(function() conn:Disconnect() end)
+	end
+	table.clear(HostileFolderState.conns)
+	HostileFolderState.playerCharacters = nil
+	HostileFolderState.hostileFolder = nil
+end
+
+-- Reconcile recursively, including pre-existing nested folders and streamed rigs.
+-- Stop at each rig so accessories/limbs are not registered as separate NPCs.
+local function scanHostileFolder(folder, seen)
+	for _, child in ipairs(folder:GetChildren()) do
+		local rig = child:IsA("Model") and (
+			child:FindFirstChildWhichIsA("Humanoid")
+			or child:FindFirstChild("HumanoidRootPart")
+			or child:FindFirstChild("Head")
+			or child.PrimaryPart)
+		if rig or child:IsA("BasePart") then
+			seen[child] = true
+			trackNPC(child)
+			rebuildNPCCache(HostileNPCCache[child], child)
+		elseif child:IsA("Folder") or child:IsA("Model") then
+			scanHostileFolder(child, seen)
+		end
+	end
+end
+
+local function updateHostileTracking()
+	if not Runtime.alive then return end
+	local pc = Workspace:FindFirstChild("PlayerCharacters")
+	local hf = pc and pc:FindFirstChild("HostileNPCs")
+	HostileFolderState.playerCharacters = pc
+	HostileFolderState.hostileFolder = hf
+	local seen = {}
+	if hf then scanHostileFolder(hf, seen) end
+	for i = #HostileNPCList, 1, -1 do
+		local model = HostileNPCList[i]
+		if not seen[model] then untrackNPC(model) end
+	end
+end
+
+updateHostileTracking()
+
+Runtime:Connect(Workspace.ChildAdded, function(child)
+	if child.Name == "PlayerCharacters" then
+		task.defer(updateHostileTracking)
+	end
+end)
+
+Runtime:Connect(Workspace.DescendantAdded, function(desc)
+	if desc.Name == "HostileNPCs" or desc.Name == "PlayerCharacters" then
+		task.defer(updateHostileTracking)
+	end
+end)
+
+----------------------------------------------------
+-- Hostile NPC Highlighting (Chams)
+----------------------------------------------------
+-- NPC chams use Roblox Highlight instances (the same mechanism the player
+-- chams use) keyed per-model, updated every ESP frame. The 2D Drawing pool
+-- only handles boxes/names/tracers, so this is what actually makes NPCs
+-- glow through walls.
+local updateNPCHighlights
+do
+	local NPCHighlights = setmetatable({}, { __mode = "k" })
+	local chamsParent = nil
+
+	local function getChamsParent()
+		if chamsParent and chamsParent.Parent then return chamsParent end
+		-- Highlight instances must live in the rendered world, not CoreGui.
+		chamsParent = Instance.new("Folder")
+		chamsParent.Name = "PHETAMINE_NPCChams"
+		chamsParent.Parent = Workspace
+		return chamsParent
+	end
+	Runtime:OnTeardown(function()
+		if chamsParent then chamsParent:Destroy(); chamsParent = nil end
+	end)
+
+	local function getHighlight(model)
+		local hl = NPCHighlights[model]
+		if hl and hl.Parent then return hl end
+		local parent = getChamsParent()
+		if not parent then return nil end
+		hl = Instance.new("Highlight")
+		hl.Name = "PHETAMINE_NPCHL"
+		hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		hl.Enabled = false
+		hl.Adornee = model
+		hl.Parent = parent
+		NPCHighlights[model] = hl
+		return hl
+	end
+
+	updateNPCHighlights = function()
+		local active = Settings.Enabled and Settings.HighlightNPCs
+		local localChar = LocalPlayer.Character
+		local localHrp = localChar and localChar:FindFirstChild("HumanoidRootPart")
+		local localPos = localHrp and localHrp.Position or (Camera and Camera.CFrame.Position) or ZERO3
+		local hlColor = Settings.RainbowColor and currentColor() or Settings.PlayerHighlightColor
+
+		local seen = {}
+		if active then
+			for _, model in ipairs(HostileNPCList) do
+				seen[model] = true
+				local cache = HostileNPCCache[model]
+				local hl = getHighlight(model)
+				local show = cache and isAlive(cache, model) and hl ~= nil
+
+				if show and Settings.MaxDistance > 0 and cache.hrp then
+					local dist = (localPos - cache.hrp.Position).Magnitude
+					if dist > Settings.MaxDistance then show = false end
+				end
+
+				if show then
+					hl.Adornee = model
+					hl.FillColor = hlColor
+					hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+					hl.FillTransparency = Settings.PlayerHighlightFillTransparency
+					hl.OutlineTransparency = Settings.PlayerHighlightOutlineTransparency
+					hl.Enabled = true
+				elseif hl then
+					hl.Enabled = false
+					hl.Adornee = nil
+				end
+			end
+		end
+
+		-- Prune highlights for NPCs that disappeared / lost tracking.
+		for model, hl in pairs(NPCHighlights) do
+			if not seen[model] or not (active and model and model.Parent) then
+				pcall(function() hl:Destroy() end)
+				NPCHighlights[model] = nil
+			end
+		end
+	end
+end
+
+----------------------------------------------------
+-- Hostile NPC ESP Drawing Pool (Budget-Capped)
+----------------------------------------------------
+local MAX_ESP_POOL_SIZE = 32
+local MAX_SKELETON_SLOTS = 4
+local ESPPool = {}
+
+local function hideSlot(slot)
+	if not slot then return end
+	if slot.box then slot.box.Visible = false end
+	if slot.boxOutline then slot.boxOutline.Visible = false end
+	if slot.name then slot.name.Visible = false end
+	if slot.dist then slot.dist.Visible = false end
+	if slot.tracer then slot.tracer.Visible = false end
+	if slot.skeleton then
+		for _, line in ipairs(slot.skeleton) do
+			line.Visible = false
+		end
+	end
+end
+
+local function hideAllSlots()
+	for _, slot in ipairs(ESPPool) do
+		hideSlot(slot)
+	end
+end
+
+local function initESPPool()
+	for i = 1, MAX_ESP_POOL_SIZE do
+		local slot = {
+			box = newDrawing("Square", { Visible = false, Filled = false, Thickness = 1.5 }),
+			boxOutline = newDrawing("Square", { Visible = false, Filled = false, Thickness = 3, Color = Color3.new(0, 0, 0) }),
+			name = newDrawing("Text", { Visible = false, Center = true, Outline = true, Size = Settings.TextSize, Font = DRAW_FONT }),
+			dist = newDrawing("Text", { Visible = false, Center = true, Outline = true, Size = Settings.TextSize, Font = DRAW_FONT }),
+			tracer = newDrawing("Line", { Visible = false, Thickness = 1 }),
+			skeleton = nil,
+		}
+		if i <= MAX_SKELETON_SLOTS then
+			slot.skeleton = {}
+			for b = 1, math.max(#R15_BONES, #R6_BONES) do
+				slot.skeleton[b] = newDrawing("Line", { Visible = false, Thickness = 1.5 })
+			end
+		end
+		ESPPool[i] = slot
+	end
+end
+
+initESPPool()
+
+local espAccum = 0
+Runtime:Connect(RunService.RenderStepped, function(dt)
+	espAccum = espAccum + dt
+	if espAccum < ESP_UPDATE_RATE then return end
+	espAccum = 0
+
+	Camera = Workspace.CurrentCamera
+	if not Camera then return end
+	local camPos = Camera.CFrame.Position
+	local localChar = LocalPlayer.Character
+	local localRoot = localChar and localChar:FindFirstChild("HumanoidRootPart")
+	local localPos = localRoot and localRoot.Position or camPos
+	local color = currentColor()
+
+	-- Update Player & NPC Highlights continuously
+	updatePlayerHighlights()
+	updateNPCHighlights()
+
+	if not Settings.Enabled then
+		hideAllSlots()
+		return
+	end
+
+	local renderCandidates = {}
+	for _, model in ipairs(HostileNPCList) do
+		local cache = HostileNPCCache[model]
+		if cache and isAlive(cache, model) and cache.hrp then
+			local hrpPos = cache.hrp.Position
+			local dist = (localPos - hrpPos).Magnitude
+			if Settings.MaxDistance == 0 or dist <= Settings.MaxDistance then
+				local rootPos, onScreen = Camera:WorldToViewportPoint(hrpPos)
+				if onScreen and rootPos.Z > 0 then
+					table.insert(renderCandidates, {
+						model = model,
+						cache = cache,
+						dist = dist,
+						rootPos = rootPos,
+					})
+				end
+			end
+		end
+	end
+
+	table.sort(renderCandidates, function(a, b)
+		return a.dist < b.dist
+	end)
+
+	for i = 1, MAX_ESP_POOL_SIZE do
+		local slot = ESPPool[i]
+		local cand = renderCandidates[i]
+		if cand then
+			local model = cand.model
+			local cache = cand.cache
+			local hrp = cache.hrp
+			local rootPos = cand.rootPos
+			local dist = cand.dist
+
+			local head = cache.head
+			local topPos = head and Camera:WorldToViewportPoint(head.Position + VEC_HEAD_OFFSET)
+				or Camera:WorldToViewportPoint(hrp.Position + Vector3.new(0, 3, 0))
+			local botPos = Camera:WorldToViewportPoint(hrp.Position - VEC_FEET_OFFSET)
+			local height = math.clamp(math.abs(topPos.Y - botPos.Y), 4, 900)
+			local width = height * 0.55
+			local x = rootPos.X - width / 2
+			local y = math.min(topPos.Y, botPos.Y)
+
+			if Settings.ShowBox and slot.box and slot.boxOutline then
+				slot.box.Position = Vector2.new(x, y)
+				slot.box.Size = Vector2.new(width, height)
+				slot.box.Color = color
+				slot.box.Visible = true
+
+				slot.boxOutline.Position = slot.box.Position
+				slot.boxOutline.Size = slot.box.Size
+				slot.boxOutline.Visible = true
+			else
+				if slot.box then slot.box.Visible = false end
+				if slot.boxOutline then slot.boxOutline.Visible = false end
+			end
+
+			if Settings.ShowName and slot.name then
+				slot.name.Text = model.Name
+				slot.name.Position = Vector2.new(rootPos.X, y - 16)
+				slot.name.Size = Settings.TextSize
+				slot.name.Color = color
+				slot.name.Visible = true
+			else
+				if slot.name then slot.name.Visible = false end
+			end
+
+			if Settings.ShowDistance and slot.dist then
+				slot.dist.Text = tostring(math.floor(dist + 0.5)) .. "m"
+				slot.dist.Position = Vector2.new(rootPos.X, y + height + 2)
+				slot.dist.Size = Settings.TextSize
+				slot.dist.Color = color
+				slot.dist.Visible = true
+			else
+				if slot.dist then slot.dist.Visible = false end
+			end
+
+			if Settings.ShowTracer and slot.tracer then
+				local vp = Camera.ViewportSize
+				local origin
+				if Settings.TracerOrigin == "Center" then
+					origin = Vector2.new(vp.X / 2, vp.Y / 2)
+				elseif Settings.TracerOrigin == "Mouse" then
+					origin = UserInputService:GetMouseLocation()
+				elseif Settings.TracerOrigin == "Top" then
+					origin = Vector2.new(vp.X / 2, 0)
+				else
+					origin = Vector2.new(vp.X / 2, vp.Y)
+				end
+				slot.tracer.From = origin
+				slot.tracer.To = Vector2.new(rootPos.X, y + height)
+				slot.tracer.Color = color
+				slot.tracer.Visible = true
+			else
+				if slot.tracer then slot.tracer.Visible = false end
+			end
+
+			if Settings.ShowSkeleton and slot.skeleton then
+				local parts = cache.parts
+				local boneList = parts.UpperTorso and R15_BONES or R6_BONES
+				for b, pair in ipairs(boneList) do
+					local partA = parts[pair[1]]
+					local partB = parts[pair[2]]
+					local line = slot.skeleton[b]
+					if line then
+						if partA and partB then
+							local a, onA = Camera:WorldToViewportPoint(partA.Position)
+							local bPos, onB = Camera:WorldToViewportPoint(partB.Position)
+							if (onA and a.Z > 0) or (onB and bPos.Z > 0) then
+								line.From = Vector2.new(a.X, a.Y)
+								line.To = Vector2.new(bPos.X, bPos.Y)
+								line.Color = color
+								line.Visible = true
+							else
+								line.Visible = false
+							end
+						else
+							line.Visible = false
+						end
+					end
+				end
+				for b = #boneList + 1, #slot.skeleton do
+					if slot.skeleton[b] then slot.skeleton[b].Visible = false end
+				end
+			else
+				if slot.skeleton then
+					for _, line in ipairs(slot.skeleton) do
+						line.Visible = false
+					end
+				end
+			end
+		else
+			hideSlot(slot)
+		end
+	end
+end)
+
+----------------------------------------------------
+-- Fullbright
+----------------------------------------------------
+local LightingOriginal = nil
+local FullBrightConn = nil
+
+local function captureLightingOriginal()
+	if LightingOriginal then return end
+
+	LightingOriginal = {
+		Brightness = Lighting.Brightness,
+		ClockTime = Lighting.ClockTime,
+		FogEnd = Lighting.FogEnd,
+		GlobalShadows = Lighting.GlobalShadows,
+		OutdoorAmbient = Lighting.OutdoorAmbient,
+	}
+end
+
+local function applyFullBrightNow()
+	pcall(function()
+		Lighting.Brightness = 6
+		Lighting.ClockTime = 11
+		Lighting.FogEnd = 100000
+		Lighting.GlobalShadows = false
+		Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+	end)
+end
+
+local function restoreLighting()
+	if not LightingOriginal then return end
+
+	pcall(function()
+		Lighting.Brightness = LightingOriginal.Brightness
+		Lighting.ClockTime = LightingOriginal.ClockTime
+		Lighting.FogEnd = LightingOriginal.FogEnd
+		Lighting.GlobalShadows = LightingOriginal.GlobalShadows
+		Lighting.OutdoorAmbient = LightingOriginal.OutdoorAmbient
+	end)
+end
+
+local function setFullBright(on)
+	if not Runtime.alive then on = false end
+	Settings.FullBrightEnabled = on
+
+	if FullBrightConn then
+		FullBrightConn:Disconnect()
+		FullBrightConn = nil
+	end
+
+	if on then
+		captureLightingOriginal()
+		applyFullBrightNow()
+
+		-- Owned by this function (re-made on every toggle), so it is not a
+		-- Runtime registration; teardown calls setFullBright(false) to drop it.
+		FullBrightConn = RunService.RenderStepped:Connect(function()
+			if Settings.FullBrightEnabled and Runtime.alive then
+				applyFullBrightNow()
+			end
+		end)
+	else
+		restoreLighting()
+	end
+end
+
+----------------------------------------------------
+-- Hitbox Expander (Hostile NPCs & Players)
+----------------------------------------------------
+local HitboxRecords = setmetatable({}, { __mode = "k" })
+
+local function restoreHitboxPart(part, rec)
+	if not part or not rec then return end
+	if part.Parent then
+		pcall(function()
+			part.Size = rec.Size
+			part.Transparency = rec.Transparency
+			part.CanCollide = rec.CanCollide
+			part.CanQuery = rec.CanQuery
+		end)
+	end
+	HitboxRecords[part] = nil
+end
+
+local function markHitboxPart(part)
+	if not part or not part.Parent then return end
+	if LocalPlayer.Character and part:IsDescendantOf(LocalPlayer.Character) then return end
+
+	local rec = HitboxRecords[part]
+	if not rec then
+		rec = {
+			Size = part.Size,
+			Transparency = part.Transparency,
+			CanCollide = part.CanCollide,
+			CanQuery = part.CanQuery,
+			Needed = false,
+		}
+		HitboxRecords[part] = rec
+	end
+
+	rec.Needed = true
+	local size = math.max(1, tonumber(Settings.HitboxSize) or 8)
+	pcall(function()
+		part.Size = Vector3.new(size, size, size)
+		part.Transparency = math.clamp(tonumber(Settings.HitboxTransparency) or 0.65, 0, 1)
+		part.CanCollide = false
+		part.CanQuery = true
+	end)
+end
+
+local function markNPCHitboxes()
+	if not Settings.HitboxNPCs then return end
+	for _, model in ipairs(HostileNPCList) do
+		local cache = HostileNPCCache[model]
+		if cache and isAlive(cache, model) and cache.hrp then
+			markHitboxPart(cache.hrp)
+		end
+	end
+end
+
+local function markPlayerHitboxes()
+	if not Settings.HitboxPlayers then return end
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LocalPlayer then
+			local cache = getPlayerCache(plr)
+			if cache and isPlayerAlive(cache) and cache.hrp then
+				markHitboxPart(cache.hrp)
+			end
+		end
+	end
+end
+
+local hitboxAccum = 0
+local folderTrackAccum = 0
+local sphWatchAccum = 0
+
+Runtime:Connect(RunService.Heartbeat, function(dt)
+	folderTrackAccum = folderTrackAccum + dt
+	if folderTrackAccum >= 0.75 then
+		folderTrackAccum = 0
+		updateHostileTracking()
+	end
+
+	sphWatchAccum = sphWatchAccum + dt
+	if sphWatchAccum >= 0.15 then
+		sphWatchAccum = 0
+		if Settings.AutoChamber or Settings.AutoFireMode then
+			scanAllSPHWeapons()
+		end
+	end
+
+	hitboxAccum = hitboxAccum + dt
+	if hitboxAccum < 0.25 then return end
+	hitboxAccum = 0
+
+	for _, rec in pairs(HitboxRecords) do
+		rec.Needed = false
+	end
+
+	if Settings.HitboxEnabled then
+		markNPCHitboxes()
+		markPlayerHitboxes()
+	end
+
+	for part, rec in pairs(HitboxRecords) do
+		if not part or not part.Parent or not Settings.HitboxEnabled or not rec.Needed then
+			restoreHitboxPart(part, rec)
+		end
+	end
+end)
+
+----------------------------------------------------
+-- Aimbot / aimlock (Hostile NPCs & Players)
+----------------------------------------------------
+local aimlockKeyHeld = false
+local selectedAimlock = 1
+local currentAimTarget, currentAimTarget2 = nil, nil
+
+local aimRayParams = RaycastParams.new()
+aimRayParams.FilterType = Enum.RaycastFilterType.Exclude
+local aimIgnore = {}
+
+-- Find an aimable BasePart on a character model. NPC kits don't always name
+-- the head "Head" (and the configured part may be missing), so this falls
+-- back through the model hierarchy instead of returning nil.
+local function findAimPart(cache, model, partName)
+	if not cache then return nil end
+
+	if partName and cache.parts and cache.parts[partName] then
+		return cache.parts[partName]
+	end
+
+	if model then
+		if partName then
+			local named = model:FindFirstChild(partName, true)
+			if named and named:IsA("BasePart") then return named end
+		end
+		local head = model:FindFirstChild("Head", true)
+		if head and head:IsA("BasePart") then return head end
+	end
+
+	if cache.head and cache.head:IsA("BasePart") and cache.head.Parent then
+		return cache.head
+	end
+	if cache.hrp and cache.hrp:IsA("BasePart") and cache.hrp.Parent then
+		return cache.hrp
+	end
+	if model then
+		local anyPart = model:FindFirstChildWhichIsA("BasePart", true)
+		if anyPart then return anyPart end
+	end
+	return nil
+end
+
+local function getNPCAimPart(cache, partName)
+	return findAimPart(cache, cache and cache.char or cache and cache.model, partName)
+end
+
+local function canSee(part, targetRoot, wallCheck)
+	if not wallCheck then return true end
+	if not part then return false end
+	aimIgnore[1] = LocalPlayer.Character or Workspace
+	aimIgnore[2] = targetRoot or part.Parent
+	aimRayParams.FilterDescendantsInstances = aimIgnore
+	local origin = Camera.CFrame.Position
+	local hit = Workspace:Raycast(origin, part.Position - origin, aimRayParams)
+	return hit == nil
+end
+
+local function scoreTargetPart(part, maxDistance, fov, targetClosest)
+	local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+	local localPos = localRoot and localRoot.Position or Camera.CFrame.Position
+	local dist = (localPos - part.Position).Magnitude
+	if maxDistance > 0 and dist > maxDistance then return nil end
+	local screenPos, onScreen = Camera:WorldToViewportPoint(part.Position)
+	if not onScreen or screenPos.Z <= 0 then return nil end
+	local center = Camera.ViewportSize / 2
+	local screenDist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
+	if fov > 0 and screenDist > fov then return nil end
+	return targetClosest and dist or screenDist, dist
+end
+
+local function scoreNPC(model, partName, wallCheck, maxDistance, fov, targetClosest)
+	if not model or not model.Parent then return nil end
+	local cache = HostileNPCCache[model]
+	if not cache or not isAlive(cache, model) then return nil end
+	local part = getNPCAimPart(cache, partName)
+	if not part or not canSee(part, model, wallCheck) then return nil end
+	local score, dist = scoreTargetPart(part, maxDistance, fov, targetClosest)
+	if not score then return nil end
+	return part, score, dist
+end
+
+local function scorePlayerTarget(plr, partName, wallCheck, maxDistance, fov, targetClosest)
+	if not plr or not plr.Parent or plr == LocalPlayer then return nil end
+	if Settings.PlayerTeamCheck and plr.Team and LocalPlayer.Team and plr.Team == LocalPlayer.Team then return nil end
+	local cache = getPlayerCache(plr)
+	if not isPlayerAlive(cache) then return nil end
+	local part = getNPCAimPart(cache, partName)
+	if not part or not canSee(part, cache.char, wallCheck) then return nil end
+	local score, dist = scoreTargetPart(part, maxDistance, fov, targetClosest)
+	if not score then return nil end
+	return part, score, dist
+end
+
+local function getBestAimTarget(current, targetNPCs, targetPlayers, partName, wallCheck, maxDistance, fov, targetClosest)
+	if current then
+		if typeof(current) == "Instance" and current:IsA("Player") then
+			if targetPlayers then
+				local part, score = scorePlayerTarget(current, partName, wallCheck, maxDistance, fov, targetClosest)
+				if part then return current, part end
+			end
+		else
+			if targetNPCs then
+				local part, score = scoreNPC(current, partName, wallCheck, maxDistance, fov, targetClosest)
+				if part then return current, part end
+			end
+		end
+	end
+
+	local bestObj, bestPart, bestScore
+
+	if targetNPCs then
+		for _, model in ipairs(HostileNPCList) do
+			local part, score = scoreNPC(model, partName, wallCheck, maxDistance, fov, targetClosest)
+			if part and (not bestScore or score < bestScore) then
+				bestObj, bestPart, bestScore = model, part, score
+			end
+		end
+	end
+
+	if targetPlayers then
+		for _, plr in ipairs(Players:GetPlayers()) do
+			if plr ~= LocalPlayer then
+				local part, score = scorePlayerTarget(plr, partName, wallCheck, maxDistance, fov, targetClosest)
+				if part and (not bestScore or score < bestScore) then
+					bestObj, bestPart, bestScore = plr, part, score
+				end
+			end
+		end
+	end
+
+	return bestObj, bestPart
+end
+
+local function aimAt(part, smoothness, prediction, dt)
+	local position = part.Position
+	if prediction and prediction > 0 then position = position + (part.AssemblyLinearVelocity * prediction) end
+	local camPos = Camera.CFrame.Position
+	local goal = CFrame.lookAt(camPos, position)
+	if not smoothness or smoothness <= 1 then
+		Camera.CFrame = goal
+	else
+		Camera.CFrame = Camera.CFrame:Lerp(goal, math.clamp(dt * (20 / smoothness), 0.05, 1))
+	end
+end
+
+local function setAimlockEnabled(which, enabled)
+	selectedAimlock = which
+	if which == 1 then
+		Settings.AimlockEnabled = enabled
+		if enabled then Settings.Aimlock2Enabled = false end
+	else
+		Settings.Aimlock2Enabled = enabled
+		if enabled then Settings.AimlockEnabled = false end
+	end
+	currentAimTarget = nil
+	currentAimTarget2 = nil
+	if not enabled then aimlockKeyHeld = false end
+	refreshToggle("AimlockEnabled")
+	refreshToggle("Aimlock2Enabled")
+end
+
+Runtime:Connect(UserInputService.InputBegan, function(input, gpe)
+	if gpe then return end
+	if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+	if input.KeyCode == Settings.AimlockKey then
+		if Settings.AimlockKeyMode == "Hold" then
+			aimlockKeyHeld = true
+		else
+			if Settings.AimlockEnabled then
+				setAimlockEnabled(1, false)
+				aimlockKeyHeld = false
+			elseif Settings.Aimlock2Enabled then
+				setAimlockEnabled(2, false)
+				aimlockKeyHeld = false
+			else
+				setAimlockEnabled(selectedAimlock, true)
+				aimlockKeyHeld = true
+			end
+		end
+	end
+end)
+
+Runtime:Connect(UserInputService.InputEnded, function(input)
+	if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == Settings.AimlockKey and Settings.AimlockKeyMode == "Hold" then
+		aimlockKeyHeld = false
+		currentAimTarget = nil
+		currentAimTarget2 = nil
+	end
+end)
+
+RunService:BindToRenderStep("AimlockUpdate_PHETAMINE", Enum.RenderPriority.Camera.Value + 1, function(dt)
+	-- BindToRenderStep returns no connection, so the Runtime can't disconnect it:
+	-- the callback has to fail closed itself, then teardown unbinds it by name.
+	if not Runtime.alive then
+		currentAimTarget = nil
+		currentAimTarget2 = nil
+		return
+	end
+	Camera = Workspace.CurrentCamera
+	if not Camera then return end
+	if Settings.AimlockEnabled and aimlockKeyHeld then
+		local obj, part = getBestAimTarget(currentAimTarget, Settings.AimTargetNPCs, Settings.AimTargetPlayers, Settings.AimlockPart, Settings.AimlockWallCheck, Settings.AimlockMaxDistance, Settings.AimlockFOV, Settings.AimTargetClosest)
+		currentAimTarget = obj
+		if part then aimAt(part, Settings.AimlockSmoothness, Settings.PredictionFactor, dt) end
+	else
+		currentAimTarget = nil
+	end
+	if not Settings.AimlockEnabled and Settings.Aimlock2Enabled and aimlockKeyHeld then
+		local obj, part = getBestAimTarget(currentAimTarget2, Settings.AimTargetNPCs, true, Settings.Aimlock2Part, Settings.Aimlock2WallCheck, Settings.Aimlock2MaxDistance, Settings.AimlockFOV, false)
+		currentAimTarget2 = obj
+		if part then aimAt(part, nil, 0, dt) end
+	else
+		currentAimTarget2 = nil
+	end
+end)
+
+----------------------------------------------------
+-- FOV circle
+----------------------------------------------------
+local fovCircle = newDrawing("Circle", { Thickness = 1.5, NumSides = 64, Filled = false, Transparency = 1, Visible = false })
+
+Runtime:Connect(RunService.RenderStepped, function(dt)
+	rainbowHue = (rainbowHue + dt * 0.3) % 1
+	Camera = Workspace.CurrentCamera
+	if not Camera then return end
+	local center = Camera.ViewportSize / 2
+	local col = currentColor()
+	fovCircle.Visible = (Settings.AimlockEnabled or Settings.Aimlock2Enabled) and Settings.ShowFOVCircle and Settings.AimlockFOV > 0
+	fovCircle.Radius = Settings.AimlockFOV
+	fovCircle.Position = Vector2.new(center.X, center.Y)
+	fovCircle.Color = col
+end)
+
+----------------------------------------------------
+-- Movement: Fly + WalkSpeed enforcer
+----------------------------------------------------
+Runtime:Connect(UserInputService.JumpRequest, function()
+	if not Settings.InfiniteJumpEnabled then return end
+	local character = LocalPlayer.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if humanoid and humanoid.Health > 0 then
+		humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+	end
+end)
+
+local NoClipRecords = setmetatable({}, { __mode = "k" })
+
+local function setNoClip(on)
+	if not Runtime.alive then on = false end
+	Settings.NoClipEnabled = on
+	refreshToggle("NoClipEnabled")
+	if not on then
+		for part, original in pairs(NoClipRecords) do
+			if part and part.Parent then part.CanCollide = original end
+			NoClipRecords[part] = nil
+		end
+	end
+end
+
+Runtime:Connect(RunService.Stepped, function()
+	if not Settings.NoClipEnabled then return end
+	local character = LocalPlayer.Character
+	if not character then return end
+	for _, part in ipairs(character:GetDescendants()) do
+		if part:IsA("BasePart") then
+			if NoClipRecords[part] == nil then NoClipRecords[part] = part.CanCollide end
+			part.CanCollide = false
+		end
+	end
+end)
+
+local flyConn = nil
+local flyBV = nil
+local flyBG = nil
+
+local function getHRP()
+	local char = LocalPlayer.Character
+	return char and char:FindFirstChild("HumanoidRootPart")
+end
+
+local function getHumanoid()
+	local char = LocalPlayer.Character
+	return char and char:FindFirstChildOfClass("Humanoid")
+end
+
+local function cleanupFlyForces()
+	if flyConn then flyConn:Disconnect(); flyConn = nil end
+	if flyBV then pcall(function() flyBV:Destroy() end); flyBV = nil end
+	if flyBG then pcall(function() flyBG:Destroy() end); flyBG = nil end
+end
+
+local function setFly(on)
+	if not Runtime.alive then on = false end
+	Settings.FlyEnabled = on
+	refreshToggle("FlyEnabled")
+	cleanupFlyForces()
+	if not on then return end
+
+	local hrp = getHRP()
+	if not hrp then return end
+
+	flyBV = Instance.new("BodyVelocity")
+	flyBV.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+	flyBV.Velocity = ZERO3
+	flyBV.P = 9000
+	flyBV.Parent = hrp
+
+	flyBG = Instance.new("BodyGyro")
+	flyBG.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+	flyBG.P = 9000
+	flyBG.CFrame = hrp.CFrame
+	flyBG.Parent = hrp
+
+	-- Owned by the fly rig (re-made on every toggle / respawn), so it is not a
+	-- Runtime registration; teardown calls cleanupFlyForces() to drop it.
+	flyConn = RunService.RenderStepped:Connect(function()
+		if not Runtime.alive then cleanupFlyForces() return end
+		local root = getHRP()
+		if not root then cleanupFlyForces() return end
+		if not flyBV or not flyBV.Parent then flyBV = nil; setFly(true); return end
+		if not flyBG or not flyBG.Parent then flyBG = nil; setFly(true); return end
+
+		Camera = Workspace.CurrentCamera
+	if not Camera then return end
+		local move = ZERO3
+		if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + Camera.CFrame.LookVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.S) then move = move - Camera.CFrame.LookVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.A) then move = move - Camera.CFrame.RightVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + Camera.CFrame.RightVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.new(0, 1, 0) end
+		if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then move = move - Vector3.new(0, 1, 0) end
+
+		if move.Magnitude > 0 then
+			move = move.Unit * Settings.FlySpeed
+		end
+		flyBV.Velocity = move
+		flyBG.CFrame = Camera.CFrame
+	end)
+end
+
+Runtime:Connect(UserInputService.InputBegan, function(input, gpe)
+	if gpe then return end
+	if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == Settings.FlyKey then
+		if Settings.FlyKeyMode == "Hold" then
+			setFly(true)
+		else
+			setFly(not Settings.FlyEnabled)
+		end
+	end
+end)
+
+Runtime:Connect(UserInputService.InputEnded, function(input)
+	if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == Settings.FlyKey and Settings.FlyKeyMode == "Hold" then
+		setFly(false)
+	end
+end)
+
+Runtime:Connect(LocalPlayer.CharacterAdded, function()
+	cleanupFlyForces()
+	if Settings.FlyEnabled then
+		task.wait(0.5)
+		setFly(true)
+	end
+end)
+
+Runtime:Connect(RunService.Heartbeat, function()
+	local hum = getHumanoid()
+	if not hum then return end
+	if Settings.WalkSpeedEnabled and hum.WalkSpeed ~= Settings.WalkSpeed then
+		hum.WalkSpeed = Settings.WalkSpeed
+	end
+	if Settings.JumpPowerEnabled then
+		if not hum.UseJumpPower then hum.UseJumpPower = true end
+		if hum.JumpPower ~= Settings.JumpPower then hum.JumpPower = Settings.JumpPower end
+	end
+end)
+
+----------------------------------------------------
+-- Feature cleanup
+----------------------------------------------------
+Runtime:OnTeardown(function()
+	-- Switch the features off first; the loops, the fly rig and the lighting
+	-- enforcer all read these, so nothing can re-apply itself halfway through
+	-- the teardown.
+	Settings.Enabled = false
+	Settings.HighlightPlayers = false
+	Settings.HighlightNPCs = false
+	Settings.AimlockEnabled = false
+	Settings.Aimlock2Enabled = false
+	Settings.FlyEnabled = false
+	Settings.WalkSpeedEnabled = false
+	Settings.JumpPowerEnabled = false
+	Settings.InfiniteJumpEnabled = false
+	Settings.HitboxEnabled = false
+	Settings.RemoveFallDamage = false
+	aimlockKeyHeld = false
+	currentAimTarget = nil
+	currentAimTarget2 = nil
+
+	-- The aim lock and the mouse-free enforcers run on BindToRenderStep, which
+	-- hands back no connection for the Runtime to disconnect: unbind by name.
+	pcall(function() RunService:UnbindFromRenderStep("AimlockUpdate_PHETAMINE") end)
+	pcall(function() RunService:UnbindFromRenderStep("PHETAMINE_MouseFree_Camera") end)
+	pcall(function() RunService:UnbindFromRenderStep("PHETAMINE_MouseFree_Last") end)
+
+	setNoClip(false)
+	cleanupFlyForces()
+
+	-- Drawings: hide the whole ESP pool, then drop the FOV circle.
+	hideAllSlots()
+	for _, slot in ipairs(ESPPool) do
+		for key, drawing in pairs(slot) do
+			if key == "skeleton" then
+				for _, line in ipairs(drawing) do removeDrawing(line) end
+			else
+				removeDrawing(drawing)
+			end
+		end
+	end
+	removeDrawing(fovCircle)
+
+	-- Chams: players first, then the hostile-NPC highlight folder (the
+	-- updater prunes every highlight now that Settings.Enabled is false).
+	for _, plr in ipairs(Players:GetPlayers()) do
+		destroyPlayerHighlight(plr)
+	end
+	for plr in pairs(PlayerHighlights) do
+		destroyPlayerHighlight(plr)
+	end
+	for plr, cache in pairs(PlayerCharCache) do
+		disconnectPlayerCache(cache)
+		PlayerCharCache[plr] = nil
+	end
+	pcall(updateNPCHighlights)
+
+	-- NPC tracking: per-model DescendantAdded/Removing/Ancestry connections are
+	-- owned by the caches (they are re-made whenever a model respawns, so they
+	-- are not Runtime registrations); drop them here instead.
+	for i = #HostileNPCList, 1, -1 do
+		untrackNPC(HostileNPCList[i])
+	end
+	table.clear(HostileNPCList)
+	disconnectHostileState()
+
+	for part, rec in pairs(HitboxRecords) do
+		restoreHitboxPart(part, rec)
+	end
+	table.clear(HitboxRecords)
+
+	setFullBright(false)
+end)
+
+----------------------------------------------------
+-- UI panel / theme engine
+----------------------------------------------------
+local oldGui = PlayerGui:FindFirstChild("PHETAMINE_GUI")
+if oldGui then oldGui:Destroy() end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "PHETAMINE_GUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.DisplayOrder = 1000
+ScreenGui.Parent = PlayerGui
+
+-- Registered right after the GUI root exists rather than at the end of the
+-- menu build, so the hook exists even if building the menu errors halfway
+-- through: the GUI is the first thing to go, which also means no queued click
+-- can re-enable a feature while the other teardown hooks run.
+Runtime:OnTeardown(function()
+	if ScreenGui and ScreenGui.Parent then
+		pcall(function() ScreenGui:Destroy() end)
+	end
+end)
+
+local RED_BASE = Color3.fromRGB(200, 20, 20)
+local RED_DEEP_BASE = Color3.fromRGB(120, 15, 15)
+local RED = RED_BASE
+local RED_DEEP = RED_DEEP_BASE
+local BG_MAIN = Color3.fromRGB(8, 8, 12)
+local BG_NAV = Color3.fromRGB(12, 12, 18)
+local BG_BTN = Color3.fromRGB(18, 18, 25)
+local BG_ELEM = Color3.fromRGB(12, 12, 18)
+local OFF_TRACK = Color3.fromRGB(30, 30, 40)
+local TXT_MAIN = Color3.fromRGB(220, 220, 230)
+local TXT_DIM = Color3.fromRGB(160, 160, 170)
+local TXT_TITLE = Color3.fromRGB(240, 240, 245)
+
+local function sameColor(a, b)
+	return math.abs(a.R - b.R) < 0.01 and math.abs(a.G - b.G) < 0.01 and math.abs(a.B - b.B) < 0.01
+end
+
+local ThemeItems = {}
+local CornerItems = {}
+local function addThemeItem(inst, prop, role)
+	table.insert(ThemeItems, { inst = inst, prop = prop, role = role })
+end
+local function addCornerItem(inst, radius)
+	table.insert(CornerItems, { inst = inst, def = radius })
+end
+
+local function scanThemeItems(root)
+	table.clear(ThemeItems)
+	table.clear(CornerItems)
+	for _, inst in ipairs(root:GetDescendants()) do
+		if inst:IsA("UIStroke") then
+			addThemeItem(inst, "Color", "accent")
+		elseif inst:IsA("ScrollingFrame") then
+			addThemeItem(inst, "ScrollBarImageColor3", "accent")
+		elseif inst:IsA("Frame") or inst:IsA("TextButton") then
+			if sameColor(inst.BackgroundColor3, RED_BASE) then
+				addThemeItem(inst, "BackgroundColor3", "accent")
+			elseif sameColor(inst.BackgroundColor3, RED_DEEP_BASE) then
+				addThemeItem(inst, "BackgroundColor3", "deep")
+			end
+		end
+		if inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox") then
+			if sameColor(inst.TextColor3, RED_BASE) then addThemeItem(inst, "TextColor3", "accent") end
+		end
+		if inst:IsA("UICorner") then addCornerItem(inst, inst.CornerRadius) end
+	end
+end
+
+local function applyGuiTheme()
+	if Settings.RainbowColor then
+		RED = Color3.fromHSV(rainbowHue, 1, 1)
+		RED_DEEP = Color3.fromHSV(rainbowHue, 0.9, 0.45)
+	else
+		RED = RED_BASE
+		RED_DEEP = RED_DEEP_BASE
+	end
+	for _, item in ipairs(ThemeItems) do
+		if item.inst and item.inst.Parent then
+			item.inst[item.prop] = (item.role == "deep") and RED_DEEP or RED
+		end
+	end
+	for _, update in pairs(ToggleUpdaters) do update() end
+	local main = ScreenGui:FindFirstChild("MainFrame")
+	if main then main.BackgroundTransparency = math.clamp(Settings.UITransparency / 100, 0, 0.9) end
+	local radius = Settings.UIRoundedCorners and Settings.UICornerRadius or 0
+	for _, c in ipairs(CornerItems) do
+		if c.inst and c.inst.Parent then
+			if c.def.Scale > 0.5 then
+				c.inst.CornerRadius = UDim.new(1, 0)
+			else
+				c.inst.CornerRadius = UDim.new(0, radius)
+			end
+		end
+	end
+end
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 440, 0, 580)
+MainFrame.Position = UDim2.new(0.5, -220, 0.5, -290)
+MainFrame.BackgroundColor3 = BG_MAIN
+MainFrame.BackgroundTransparency = 0
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Parent = ScreenGui
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 0)
+local MainGlow = Instance.new("UIStroke")
+MainGlow.Color = RED
+MainGlow.Thickness = 3
+MainGlow.Transparency = 0.2
+MainGlow.Parent = MainFrame
+
+-- Invisible modal button to natively unlock the mouse cursor and release camera mouse capture
+local ModalHelper = Instance.new("TextButton")
+ModalHelper.Name = "ModalHelper"
+ModalHelper.BackgroundTransparency = 1
+ModalHelper.Text = ""
+ModalHelper.Size = UDim2.new(0, 0, 0, 0)
+ModalHelper.Position = UDim2.new(0, 0, 0, 0)
+ModalHelper.Active = false
+ModalHelper.Selectable = false
+ModalHelper.Visible = true
+ModalHelper.Modal = true
+ModalHelper.Parent = MainFrame
+
+local TitleBar = Instance.new("Frame")
+TitleBar.Size = UDim2.new(1, 0, 0, 50)
+TitleBar.BackgroundTransparency = 1
+TitleBar.BorderSizePixel = 0
+TitleBar.Parent = MainFrame
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Size = UDim2.new(0, 240, 0, 20)
+TitleLabel.Position = UDim2.new(0, 12, 0, 10)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "PHETAMINE™"
+TitleLabel.TextColor3 = TXT_TITLE
+TitleLabel.TextSize = 16
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.Parent = TitleBar
+
+local SubtitleLabel = Instance.new("TextLabel")
+SubtitleLabel.Size = UDim2.new(0, 270, 0, 14)
+SubtitleLabel.Position = UDim2.new(0, 12, 0, 28)
+SubtitleLabel.BackgroundTransparency = 1
+SubtitleLabel.Text = planLabel
+SubtitleLabel.TextColor3 = TXT_DIM
+SubtitleLabel.TextSize = 10
+SubtitleLabel.Font = Enum.Font.Gotham
+SubtitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+SubtitleLabel.Parent = TitleBar
+
+local function cornerBtn(symbol, xOff, size)
+	local b = Instance.new("TextButton")
+	b.Size = UDim2.new(0, 30, 0, 30)
+	b.Position = UDim2.new(1, xOff, 0, 10)
+	b.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+	b.BorderSizePixel = 0
+	b.Text = symbol
+	b.TextColor3 = TXT_DIM
+	b.TextSize = size
+	b.Font = Enum.Font.GothamBold
+	b.Parent = TitleBar
+	Instance.new("UICorner", b).CornerRadius = UDim.new(0, 0)
+	local st = Instance.new("UIStroke")
+	st.Color = RED
+	st.Thickness = 2
+	st.Transparency = 0.5
+	st.Parent = b
+	b.MouseEnter:Connect(function()
+		b.BackgroundColor3 = RED_DEEP
+		b.TextColor3 = Color3.fromRGB(255, 255, 255)
+		st.Transparency = 0.2
+	end)
+	b.MouseLeave:Connect(function()
+		b.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+		b.TextColor3 = TXT_DIM
+		st.Transparency = 0.5
+	end)
+	return b
+end
+
+local MinimizeBtn = cornerBtn("─", -70, 16)
+local CloseBtn = cornerBtn("×", -35, 20)
+
+local NavBar = Instance.new("ScrollingFrame")
+NavBar.Size = UDim2.new(1, -16, 0, 44)
+NavBar.Position = UDim2.new(0, 8, 0, 58)
+NavBar.BackgroundColor3 = BG_NAV
+NavBar.BackgroundTransparency = 0.3
+NavBar.BorderSizePixel = 0
+NavBar.ScrollBarThickness = 3
+NavBar.ScrollBarImageColor3 = RED
+NavBar.AutomaticCanvasSize = Enum.AutomaticSize.X
+NavBar.CanvasSize = UDim2.new(0, 0, 0, 0)
+NavBar.Parent = MainFrame
+Instance.new("UICorner", NavBar).CornerRadius = UDim.new(0, 0)
+do
+	local s = Instance.new("UIStroke")
+	s.Color = RED; s.Thickness = 2; s.Transparency = 0.3; s.Parent = NavBar
+	local l = Instance.new("UIListLayout")
+	l.FillDirection = Enum.FillDirection.Horizontal
+	l.HorizontalAlignment = Enum.HorizontalAlignment.Left
+	l.VerticalAlignment = Enum.VerticalAlignment.Center
+	l.Padding = UDim.new(0, 6)
+	l.Parent = NavBar
+	local p = Instance.new("UIPadding")
+	p.PaddingLeft = UDim.new(0, 8)
+	p.PaddingRight = UDim.new(0, 8)
+	p.Parent = NavBar
+end
+
+local currentActiveButton = nil
+local function MakeNavBtn(text)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(0, 86, 0, 28)
+	btn.BackgroundColor3 = BG_BTN
+	btn.BackgroundTransparency = 0.4
+	btn.BorderSizePixel = 0
+	btn.Text = text
+	btn.TextColor3 = TXT_DIM
+	btn.TextSize = 11
+	btn.Font = Enum.Font.GothamBold
+	btn.Parent = NavBar
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 0)
+	local st = Instance.new("UIStroke")
+	st.Color = RED
+	st.Thickness = 2
+	st.Transparency = 0.6
+	st.Parent = btn
+	btn.MouseEnter:Connect(function()
+		if btn ~= currentActiveButton then btn.BackgroundColor3 = Color3.fromRGB(80, 10, 10); st.Transparency = 0.3 end
+	end)
+	btn.MouseLeave:Connect(function()
+		if btn ~= currentActiveButton then btn.BackgroundColor3 = BG_BTN; st.Transparency = 0.6 end
+	end)
+	return btn, st
+end
+
+local AimBtn, AimStroke = MakeNavBtn("Aimlock")
+local WeaponBtn, WeaponStroke = MakeNavBtn("Weapons")
+local MoveBtn, MoveStroke = MakeNavBtn("Movement")
+local VisualsBtn, VisualsStroke = MakeNavBtn("Visuals")
+local KeybindBtn, KeybindStroke = MakeNavBtn("Keybinds")
+local ThemeBtn, ThemeStroke = MakeNavBtn("UI & Theme")
+local ProfileBtn, ProfileStroke = MakeNavBtn("Profiles")
+local InfoBtn, InfoStroke = MakeNavBtn("Info")
+
+local ContentArea = Instance.new("Frame")
+ContentArea.Size = UDim2.new(1, -16, 1, -118)
+ContentArea.Position = UDim2.new(0, 8, 0, 110)
+ContentArea.BackgroundTransparency = 1
+ContentArea.Parent = MainFrame
+
+local ResizeHandle = Instance.new("Frame")
+ResizeHandle.Size = UDim2.new(0, 20, 0, 20)
+ResizeHandle.Position = UDim2.new(1, -20, 1, -20)
+ResizeHandle.BackgroundColor3 = RED
+ResizeHandle.BackgroundTransparency = 0.3
+ResizeHandle.BorderSizePixel = 0
+ResizeHandle.ZIndex = 10
+ResizeHandle.Parent = MainFrame
+Instance.new("UICorner", ResizeHandle).CornerRadius = UDim.new(0, 0)
+do
+	local ic = Instance.new("TextLabel")
+	ic.Size = UDim2.new(1, 0, 1, 0)
+	ic.BackgroundTransparency = 1
+	ic.Text = "◢"
+	ic.TextColor3 = Color3.fromRGB(255, 255, 255)
+	ic.TextSize = 14
+	ic.Font = Enum.Font.GothamBold
+	ic.Parent = ResizeHandle
+end
+
+local resizing, resizeStart, resizeStartSize = false, nil, nil
+local MIN_WIDTH, MIN_HEIGHT = 320, 420
+ResizeHandle.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		resizing = true
+		resizeStart = input.Position
+		resizeStartSize = MainFrame.AbsoluteSize
+	end
+end)
+Runtime:Connect(UserInputService.InputEnded, function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then resizing = false end
+end)
+Runtime:Connect(UserInputService.InputChanged, function(input)
+	if resizing and input.UserInputType == Enum.UserInputType.MouseMovement then
+		local delta = input.Position - resizeStart
+		MainFrame.Size = UDim2.new(0, math.max(MIN_WIDTH, resizeStartSize.X + delta.X), 0, math.max(MIN_HEIGHT, resizeStartSize.Y + delta.Y))
+	end
+end)
+
+local function MakePanel()
+	local s = Instance.new("ScrollingFrame")
+	s.Size = UDim2.new(1, 0, 1, 0)
+	s.BackgroundTransparency = 1
+	s.BorderSizePixel = 0
+	s.ScrollBarThickness = 6
+	s.ScrollBarImageColor3 = RED
+	s.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	s.CanvasSize = UDim2.new(0, 0, 0, 0)
+	s.Visible = false
+	s.Parent = ContentArea
+	local l = Instance.new("UIListLayout")
+	l.Padding = UDim.new(0, 6)
+	l.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	l.SortOrder = Enum.SortOrder.LayoutOrder
+	l.Parent = s
+	local p = Instance.new("UIPadding")
+	p.PaddingTop = UDim.new(0, 6)
+	p.PaddingBottom = UDim.new(0, 6)
+	p.PaddingLeft = UDim.new(0, 6)
+	p.PaddingRight = UDim.new(0, 12)
+	p.Parent = s
+	return s
+end
+
+local AimPanel = MakePanel()
+local WeaponPanel = MakePanel()
+local MovePanel = MakePanel()
+local VisualsPanel = MakePanel()
+local KeybindPanel = MakePanel()
+local ThemePanel = MakePanel()
+local ProfilePanel = MakePanel()
+local InfoPanel = MakePanel()
+AimPanel.Visible = true
+
+local tabs = {
+	{ AimPanel, AimBtn, AimStroke },
+	{ WeaponPanel, WeaponBtn, WeaponStroke },
+	{ MovePanel, MoveBtn, MoveStroke },
+	{ VisualsPanel, VisualsBtn, VisualsStroke },
+	{ KeybindPanel, KeybindBtn, KeybindStroke },
+	{ ThemePanel, ThemeBtn, ThemeStroke },
+	{ ProfilePanel, ProfileBtn, ProfileStroke },
+	{ InfoPanel, InfoBtn, InfoStroke },
+}
+
+local function SwitchTab(panel, btn, stroke)
+	for _, t in ipairs(tabs) do
+		t[1].Visible = false
+		t[2].BackgroundColor3 = BG_BTN
+		t[2].BackgroundTransparency = 0.4
+		t[2].TextColor3 = TXT_DIM
+		t[3].Transparency = 0.6
+	end
+	panel.Visible = true
+	btn.BackgroundColor3 = RED_DEEP
+	btn.BackgroundTransparency = 0.1
+	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	stroke.Transparency = 0.2
+	currentActiveButton = btn
+end
+AimBtn.MouseButton1Click:Connect(function() SwitchTab(AimPanel, AimBtn, AimStroke) end)
+WeaponBtn.MouseButton1Click:Connect(function() SwitchTab(WeaponPanel, WeaponBtn, WeaponStroke) end)
+MoveBtn.MouseButton1Click:Connect(function() SwitchTab(MovePanel, MoveBtn, MoveStroke) end)
+VisualsBtn.MouseButton1Click:Connect(function() SwitchTab(VisualsPanel, VisualsBtn, VisualsStroke) end)
+KeybindBtn.MouseButton1Click:Connect(function() SwitchTab(KeybindPanel, KeybindBtn, KeybindStroke) end)
+ThemeBtn.MouseButton1Click:Connect(function() SwitchTab(ThemePanel, ThemeBtn, ThemeStroke) end)
+ProfileBtn.MouseButton1Click:Connect(function() SwitchTab(ProfilePanel, ProfileBtn, ProfileStroke) end)
+InfoBtn.MouseButton1Click:Connect(function() SwitchTab(InfoPanel, InfoBtn, InfoStroke) end)
+
+----------------------------------------------------
+-- UI factories
+----------------------------------------------------
+local order = 0
+local function O() order = order + 1 return order end
+
+local function MakeSection(parent, text)
+	local f = Instance.new("Frame")
+	f.Size = UDim2.new(1, 0, 0, 28)
+	f.BackgroundTransparency = 1
+	f.BorderSizePixel = 0
+	f.LayoutOrder = O()
+	f.Parent = parent
+	local line = Instance.new("Frame")
+	line.Size = UDim2.new(0, 3, 1, -6)
+	line.Position = UDim2.new(0, 0, 0, 3)
+	line.BackgroundColor3 = RED
+	line.BorderSizePixel = 0
+	line.Parent = f
+	Instance.new("UICorner", line).CornerRadius = UDim.new(0, 0)
+	local l = Instance.new("TextLabel")
+	l.Size = UDim2.new(1, -14, 1, 0)
+	l.Position = UDim2.new(0, 14, 0, 0)
+	l.BackgroundTransparency = 1
+	l.Text = text:upper()
+	l.TextColor3 = Color3.fromRGB(240, 240, 250)
+	l.TextSize = 11
+	l.Font = Enum.Font.GothamBold
+	l.TextXAlignment = Enum.TextXAlignment.Left
+	l.Parent = f
+end
+
+local function MakeToggle(parent, text, settingKey, onChange)
+	local f = Instance.new("Frame")
+	f.Size = UDim2.new(1, 0, 0, 34)
+	f.BackgroundColor3 = BG_ELEM
+	f.BackgroundTransparency = 0.3
+	f.BorderSizePixel = 0
+	f.LayoutOrder = O()
+	f.Parent = parent
+	Instance.new("UICorner", f).CornerRadius = UDim.new(0, 0)
+	local st = Instance.new("UIStroke")
+	st.Color = RED; st.Thickness = 2; st.Transparency = 0.5; st.Parent = f
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, -60, 1, 0)
+	label.Position = UDim2.new(0, 12, 0, 0)
+	label.BackgroundTransparency = 1
+	label.Text = text
+	label.TextColor3 = TXT_MAIN
+	label.TextSize = 11
+	label.Font = Enum.Font.Gotham
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Parent = f
+	local bg = Instance.new("Frame")
+	bg.Size = UDim2.new(0, 38, 0, 18)
+	bg.Position = UDim2.new(1, -48, 0.5, -9)
+	bg.BackgroundColor3 = Settings[settingKey] and RED or OFF_TRACK
+	bg.BorderSizePixel = 0
+	bg.Parent = f
+	Instance.new("UICorner", bg).CornerRadius = UDim.new(1, 0)
+	local knob = Instance.new("Frame")
+	knob.Size = UDim2.new(0, 12, 0, 12)
+	knob.Position = Settings[settingKey] and UDim2.new(1, -15, 0.5, -6) or UDim2.new(0, 3, 0.5, -6)
+	knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	knob.BorderSizePixel = 0
+	knob.Parent = bg
+	Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(1, 0, 1, 0)
+	btn.BackgroundTransparency = 1
+	btn.Text = ""
+	btn.Parent = bg
+	local function updateVisual()
+		bg.BackgroundColor3 = Settings[settingKey] and RED or OFF_TRACK
+		knob.Position = Settings[settingKey] and UDim2.new(1, -15, 0.5, -6) or UDim2.new(0, 3, 0.5, -6)
+	end
+	ToggleUpdaters[settingKey] = updateVisual
+	btn.MouseButton1Click:Connect(function()
+		Settings[settingKey] = not Settings[settingKey]
+		updateVisual()
+		if onChange then onChange(Settings[settingKey]) end
+	end)
+end
+
+local function MakeSlider(parent, text, settingKey, minV, maxV, step, suffix, onChange)
+	step = step or 1
+	local f = Instance.new("Frame")
+	f.Size = UDim2.new(1, 0, 0, 48)
+	f.BackgroundColor3 = BG_ELEM
+	f.BackgroundTransparency = 0.3
+	f.BorderSizePixel = 0
+	f.LayoutOrder = O()
+	f.Parent = parent
+	Instance.new("UICorner", f).CornerRadius = UDim.new(0, 0)
+	local st = Instance.new("UIStroke")
+	st.Color = RED; st.Thickness = 2; st.Transparency = 0.5; st.Parent = f
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(0.6, 0, 0, 20)
+	label.Position = UDim2.new(0, 12, 0, 6)
+	label.BackgroundTransparency = 1
+	label.Text = text
+	label.TextColor3 = TXT_MAIN
+	label.TextSize = 11
+	label.Font = Enum.Font.Gotham
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Parent = f
+	local valueLabel = Instance.new("TextLabel")
+	valueLabel.Size = UDim2.new(0.4, -12, 0, 20)
+	valueLabel.Position = UDim2.new(0.6, 0, 0, 6)
+	valueLabel.BackgroundTransparency = 1
+	valueLabel.TextColor3 = RED
+	valueLabel.TextSize = 11
+	valueLabel.Font = Enum.Font.GothamBold
+	valueLabel.TextXAlignment = Enum.TextXAlignment.Right
+	valueLabel.Parent = f
+	local track = Instance.new("Frame")
+	track.Size = UDim2.new(1, -24, 0, 4)
+	track.Position = UDim2.new(0, 12, 1, -14)
+	track.BackgroundColor3 = OFF_TRACK
+	track.BorderSizePixel = 0
+	track.Parent = f
+	Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+	local fill = Instance.new("Frame")
+	fill.BackgroundColor3 = RED
+	fill.BorderSizePixel = 0
+	fill.Parent = track
+	Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+	local hb = Instance.new("TextButton")
+	hb.Size = UDim2.new(1, 0, 0, 20)
+	hb.Position = UDim2.new(0, 0, 0, -8)
+	hb.BackgroundTransparency = 1
+	hb.Text = ""
+	hb.Parent = track
+	local drag = false
+	local function formatValue(v)
+		if step < 1 then
+			return tostring(math.floor(v * 100 + 0.5) / 100) .. (suffix or "")
+		end
+		return tostring(math.floor(v + 0.5)) .. (suffix or "")
+	end
+	local function refresh()
+		local v = Settings[settingKey]
+		local r = math.clamp((v - minV) / (maxV - minV), 0, 1)
+		fill.Size = UDim2.new(r, 0, 1, 0)
+		valueLabel.Text = formatValue(v)
+	end
+	local function setFromX(x)
+		local r = math.clamp((x - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
+		local raw = minV + (maxV - minV) * r
+		local v = math.clamp(math.round(raw / step) * step, minV, maxV)
+		Settings[settingKey] = v
+		refresh()
+		if onChange then onChange(v) end
+	end
+	hb.InputBegan:Connect(function(i)
+		if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+			drag = true
+			setFromX(i.Position.X)
+		end
+	end)
+	Runtime:Connect(UserInputService.InputEnded, function(i)
+		if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then drag = false end
+	end)
+	Runtime:Connect(UserInputService.InputChanged, function(i)
+		if drag and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+			setFromX(i.Position.X)
+		end
+	end)
+	ToggleUpdaters[settingKey] = refresh
+	refresh()
+end
+
+local function MakeCycler(parent, text, settingKey, options)
+	local f = Instance.new("Frame")
+	f.Size = UDim2.new(1, 0, 0, 34)
+	f.BackgroundColor3 = BG_ELEM
+	f.BackgroundTransparency = 0.3
+	f.BorderSizePixel = 0
+	f.LayoutOrder = O()
+	f.Parent = parent
+	Instance.new("UICorner", f).CornerRadius = UDim.new(0, 0)
+	local st = Instance.new("UIStroke")
+	st.Color = RED; st.Thickness = 2; st.Transparency = 0.5; st.Parent = f
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(0.5, -12, 1, 0)
+	label.Position = UDim2.new(0, 12, 0, 0)
+	label.BackgroundTransparency = 1
+	label.Text = text
+	label.TextColor3 = TXT_MAIN
+	label.TextSize = 11
+	label.Font = Enum.Font.Gotham
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Parent = f
+	local index = 1
+	for i, opt in ipairs(options) do if opt == Settings[settingKey] then index = i break end end
+	local valueLabel = Instance.new("TextLabel")
+	valueLabel.Size = UDim2.new(0, 120, 1, 0)
+	valueLabel.Position = UDim2.new(1, -150, 0, 0)
+	valueLabel.BackgroundTransparency = 1
+	valueLabel.Text = tostring(Settings[settingKey])
+	valueLabel.TextColor3 = RED
+	valueLabel.TextSize = 11
+	valueLabel.Font = Enum.Font.GothamBold
+	valueLabel.TextXAlignment = Enum.TextXAlignment.Center
+	valueLabel.Parent = f
+	local function arrow(sym, xPos)
+		local b = Instance.new("TextButton")
+		b.Size = UDim2.new(0, 22, 0, 22)
+		b.Position = xPos
+		b.BackgroundColor3 = RED_DEEP
+		b.Text = sym
+		b.TextColor3 = Color3.fromRGB(255, 255, 255)
+		b.TextSize = 14
+		b.Font = Enum.Font.GothamBold
+		b.Parent = f
+		Instance.new("UICorner", b).CornerRadius = UDim.new(0, 0)
+		return b
+	end
+	local left = arrow("<", UDim2.new(1, -174, 0.5, -11))
+	local right = arrow(">", UDim2.new(1, -28, 0.5, -11))
+	local function apply()
+		Settings[settingKey] = options[index]
+		valueLabel.Text = tostring(options[index])
+	end
+	left.MouseButton1Click:Connect(function() index = (index - 2) % #options + 1; apply() end)
+	right.MouseButton1Click:Connect(function() index = index % #options + 1; apply() end)
+	ToggleUpdaters[settingKey] = function()
+		for i, opt in ipairs(options) do if opt == Settings[settingKey] then index = i break end end
+		valueLabel.Text = tostring(Settings[settingKey])
+	end
+end
+
+local function MakeKeybind(parent, text, settingKey)
+	local f = Instance.new("Frame")
+	f.Size = UDim2.new(1, 0, 0, 34)
+	f.BackgroundColor3 = BG_ELEM
+	f.BackgroundTransparency = 0.3
+	f.BorderSizePixel = 0
+	f.LayoutOrder = O()
+	f.Parent = parent
+	Instance.new("UICorner", f).CornerRadius = UDim.new(0, 0)
+	local st = Instance.new("UIStroke")
+	st.Color = RED; st.Thickness = 2; st.Transparency = 0.5; st.Parent = f
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, -100, 1, 0)
+	label.Position = UDim2.new(0, 12, 0, 0)
+	label.BackgroundTransparency = 1
+	label.Text = text
+	label.TextColor3 = TXT_MAIN
+	label.TextSize = 11
+	label.Font = Enum.Font.Gotham
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Parent = f
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(0, 78, 0, 24)
+	btn.Position = UDim2.new(1, -88, 0.5, -12)
+	btn.BackgroundColor3 = RED_DEEP
+	btn.Text = Settings[settingKey].Name
+	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	btn.TextSize = 11
+	btn.Font = Enum.Font.GothamBold
+	btn.Parent = f
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 0)
+	local listening = false
+	btn.MouseButton1Click:Connect(function() listening = true; btn.Text = "..." end)
+	Runtime:Connect(UserInputService.InputBegan, function(input)
+		if listening and input.UserInputType == Enum.UserInputType.Keyboard then
+			Settings[settingKey] = input.KeyCode
+			btn.Text = input.KeyCode.Name
+			listening = false
+		end
+	end)
+	ToggleUpdaters[settingKey] = function() btn.Text = Settings[settingKey].Name end
+end
+
+local function MakeTextBox(parent, text, settingKey)
+	local f = Instance.new("Frame")
+	f.Size = UDim2.new(1, 0, 0, 34)
+	f.BackgroundColor3 = BG_ELEM
+	f.BackgroundTransparency = 0.3
+	f.BorderSizePixel = 0
+	f.LayoutOrder = O()
+	f.Parent = parent
+	Instance.new("UICorner", f).CornerRadius = UDim.new(0, 0)
+	local st = Instance.new("UIStroke")
+	st.Color = RED; st.Thickness = 2; st.Transparency = 0.5; st.Parent = f
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, -150, 1, 0)
+	label.Position = UDim2.new(0, 12, 0, 0)
+	label.BackgroundTransparency = 1
+	label.Text = text
+	label.TextColor3 = TXT_MAIN
+	label.TextSize = 11
+	label.Font = Enum.Font.Gotham
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Parent = f
+	local boxBg = Instance.new("Frame")
+	boxBg.Size = UDim2.new(0, 128, 0, 24)
+	boxBg.Position = UDim2.new(1, -138, 0.5, -12)
+	boxBg.BackgroundColor3 = RED_DEEP
+	boxBg.BorderSizePixel = 0
+	boxBg.Parent = f
+	Instance.new("UICorner", boxBg).CornerRadius = UDim.new(0, 0)
+	local box = Instance.new("TextBox")
+	box.Size = UDim2.new(1, -12, 1, 0)
+	box.Position = UDim2.new(0, 6, 0, 0)
+	box.BackgroundTransparency = 1
+	box.Text = tostring(Settings[settingKey])
+	box.TextColor3 = Color3.fromRGB(255, 255, 255)
+	box.TextSize = 11
+	box.Font = Enum.Font.GothamBold
+	box.TextXAlignment = Enum.TextXAlignment.Center
+	box.ClearTextOnFocus = false
+	box.Parent = boxBg
+	box.FocusLost:Connect(function() Settings[settingKey] = box.Text end)
+	ToggleUpdaters[settingKey] = function() box.Text = tostring(Settings[settingKey]) end
+end
+
+local function MakeColorPicker(parent, text, settingKey)
+	settingKey = settingKey or "Color"
+	local def = Settings[settingKey] or Color3.fromRGB(170, 25, 30)
+	local r0, g0, b0 = math.floor(def.R * 255 + 0.5), math.floor(def.G * 255 + 0.5), math.floor(def.B * 255 + 0.5)
+	local f = Instance.new("Frame")
+	f.Size = UDim2.new(1, 0, 0, 68)
+	f.BackgroundColor3 = BG_ELEM
+	f.BackgroundTransparency = 0.3
+	f.BorderSizePixel = 0
+	f.LayoutOrder = O()
+	f.Parent = parent
+	Instance.new("UICorner", f).CornerRadius = UDim.new(0, 0)
+	local st = Instance.new("UIStroke")
+	st.Color = RED; st.Thickness = 2; st.Transparency = 0.5; st.Parent = f
+	local titleLbl = Instance.new("TextLabel")
+	titleLbl.Size = UDim2.new(1, -52, 0, 20)
+	titleLbl.Position = UDim2.new(0, 12, 0, 6)
+	titleLbl.BackgroundTransparency = 1
+	titleLbl.Text = text
+	titleLbl.TextColor3 = TXT_MAIN
+	titleLbl.TextSize = 11
+	titleLbl.Font = Enum.Font.Gotham
+	titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+	titleLbl.Parent = f
+	local preview = Instance.new("Frame")
+	preview.Size = UDim2.new(0, 30, 0, 30)
+	preview.Position = UDim2.new(1, -40, 0, 5)
+	preview.BackgroundColor3 = def
+	preview.BorderSizePixel = 0
+	preview.Parent = f
+	Instance.new("UICorner", preview).CornerRadius = UDim.new(0, 0)
+	local pv = Instance.new("UIStroke")
+	pv.Color = RED; pv.Thickness = 2; pv.Parent = preview
+	local function makeBox(letter, val, xPos)
+		local bg = Instance.new("Frame")
+		bg.Size = UDim2.new(0, 54, 0, 26)
+		bg.Position = UDim2.new(0, xPos, 0, 36)
+		bg.BackgroundColor3 = BG_BTN
+		bg.BorderSizePixel = 0
+		bg.Parent = f
+		local lbl = Instance.new("TextLabel")
+		lbl.Size = UDim2.new(0, 18, 1, 0)
+		lbl.Position = UDim2.new(0, 5, 0, 0)
+		lbl.BackgroundTransparency = 1
+		lbl.Text = letter
+		lbl.TextColor3 = TXT_DIM
+		lbl.TextSize = 10
+		lbl.Font = Enum.Font.GothamBold
+		lbl.Parent = bg
+		local box = Instance.new("TextBox")
+		box.Size = UDim2.new(1, -24, 1, 0)
+		box.Position = UDim2.new(0, 24, 0, 0)
+		box.BackgroundTransparency = 1
+		box.Text = tostring(val)
+		box.TextColor3 = Color3.fromRGB(230, 230, 240)
+		box.TextSize = 10
+		box.Font = Enum.Font.GothamBold
+		box.ClearTextOnFocus = false
+		box.Parent = bg
+		return box
+	end
+	local rBox = makeBox("R", r0, 12)
+	local gBox = makeBox("G", g0, 74)
+	local bBox = makeBox("B", b0, 136)
+	local function apply()
+		local rv = math.clamp(tonumber(rBox.Text) or r0, 0, 255)
+		local gv = math.clamp(tonumber(gBox.Text) or g0, 0, 255)
+		local bv = math.clamp(tonumber(bBox.Text) or b0, 0, 255)
+		rBox.Text, gBox.Text, bBox.Text = tostring(rv), tostring(gv), tostring(bv)
+		local c = Color3.fromRGB(rv, gv, bv)
+		preview.BackgroundColor3 = c
+		Settings[settingKey] = c
+	end
+	rBox.FocusLost:Connect(apply); gBox.FocusLost:Connect(apply); bBox.FocusLost:Connect(apply)
+	ToggleUpdaters[settingKey] = function()
+		local c = Settings[settingKey]
+		rBox.Text = tostring(math.floor(c.R * 255 + 0.5))
+		gBox.Text = tostring(math.floor(c.G * 255 + 0.5))
+		bBox.Text = tostring(math.floor(c.B * 255 + 0.5))
+		preview.BackgroundColor3 = c
+	end
+end
+
+local function MakeButton(parent, text, onClick)
+	local f = Instance.new("Frame")
+	f.Size = UDim2.new(1, 0, 0, 36)
+	f.BackgroundColor3 = RED_DEEP
+	f.BackgroundTransparency = 0.1
+	f.BorderSizePixel = 0
+	f.LayoutOrder = O()
+	f.Parent = parent
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(1, 0, 1, 0)
+	btn.BackgroundTransparency = 1
+	btn.Text = text
+	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	btn.TextSize = 12
+	btn.Font = Enum.Font.GothamBold
+	btn.Parent = f
+	btn.MouseButton1Click:Connect(function() if onClick then onClick() end end)
+end
+
+local function MakeInfoCard(parent, title, value)
+	local f = Instance.new("Frame")
+	f.Size = UDim2.new(1, 0, 0, 54)
+	f.BackgroundColor3 = BG_ELEM
+	f.BackgroundTransparency = 0.3
+	f.BorderSizePixel = 0
+	f.LayoutOrder = O()
+	f.Parent = parent
+	local st = Instance.new("UIStroke")
+	st.Color = RED; st.Thickness = 2; st.Transparency = 0.5; st.Parent = f
+	local titleLabel = Instance.new("TextLabel")
+	titleLabel.Size = UDim2.new(1, -20, 0, 20)
+	titleLabel.Position = UDim2.new(0, 12, 0, 8)
+	titleLabel.BackgroundTransparency = 1
+	titleLabel.Text = title
+	titleLabel.TextColor3 = TXT_DIM
+	titleLabel.TextSize = 10
+	titleLabel.Font = Enum.Font.Gotham
+	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+	titleLabel.Parent = f
+	local valueLabel = Instance.new("TextLabel")
+	valueLabel.Size = UDim2.new(1, -20, 0, 22)
+	valueLabel.Position = UDim2.new(0, 12, 0, 26)
+	valueLabel.BackgroundTransparency = 1
+	valueLabel.Text = value
+	valueLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	valueLabel.TextSize = 14
+	valueLabel.Font = Enum.Font.GothamBold
+	valueLabel.TextXAlignment = Enum.TextXAlignment.Left
+	valueLabel.Parent = f
+end
+
+local function MakeCreditCard(parent, role, name)
+	local f = Instance.new("Frame")
+	f.Size = UDim2.new(1, 0, 0, 60)
+	f.BackgroundColor3 = BG_ELEM
+	f.BackgroundTransparency = 0.3
+	f.BorderSizePixel = 0
+	f.LayoutOrder = O()
+	f.Parent = parent
+	Instance.new("UICorner", f).CornerRadius = UDim.new(0, 0)
+	local st = Instance.new("UIStroke")
+	st.Color = RED
+	st.Thickness = 2
+	st.Transparency = 0.5
+	st.Parent = f
+	local accent = Instance.new("Frame")
+	accent.Size = UDim2.new(0, 4, 1, -14)
+	accent.Position = UDim2.new(0, 7, 0, 7)
+	accent.BackgroundColor3 = RED
+	accent.BorderSizePixel = 0
+	accent.Parent = f
+	Instance.new("UICorner", accent).CornerRadius = UDim.new(1, 0)
+	local roleLabel = Instance.new("TextLabel")
+	roleLabel.Size = UDim2.new(1, -32, 0, 18)
+	roleLabel.Position = UDim2.new(0, 20, 0, 10)
+	roleLabel.BackgroundTransparency = 1
+	roleLabel.Text = role:upper()
+	roleLabel.TextColor3 = RED
+	roleLabel.TextSize = 9
+	roleLabel.Font = Enum.Font.GothamBold
+	roleLabel.TextXAlignment = Enum.TextXAlignment.Left
+	roleLabel.Parent = f
+	local nameLabel = Instance.new("TextLabel")
+	nameLabel.Size = UDim2.new(1, -32, 0, 26)
+	nameLabel.Position = UDim2.new(0, 20, 0, 26)
+	nameLabel.BackgroundTransparency = 1
+	nameLabel.Text = name
+	nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	nameLabel.TextSize = 16
+	nameLabel.Font = Enum.Font.GothamBold
+	nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+	nameLabel.Parent = f
+end
+
+----------------------------------------------------
+-- Config
+----------------------------------------------------
+local CONFIG_FOLDER = "PHETAMINE_STALKER_Configs"
+if makefolder and isfolder and not isfolder(CONFIG_FOLDER) then pcall(function() makefolder(CONFIG_FOLDER) end) end
+
+local function encodeSetting(v)
+	if typeof(v) == "EnumItem" and v.EnumType == Enum.KeyCode then
+		return { __type = "KeyCode", value = v.Name }
+	elseif typeof(v) == "Color3" then
+		return { __type = "Color3", R = math.floor(v.R * 255 + 0.5), G = math.floor(v.G * 255 + 0.5), B = math.floor(v.B * 255 + 0.5) }
+	end
+	return v
+end
+
+local function decodeSetting(v, old)
+	if type(v) == "table" and v.__type == "KeyCode" then
+		return Enum.KeyCode[v.value] or old
+	elseif type(v) == "table" and v.__type == "Color3" then
+		return Color3.fromRGB(v.R or 170, v.G or 25, v.B or 30)
+	end
+	return v
+end
+
+local function SaveConfiguration()
+	if not writefile then return warn("[Config] writefile not supported") end
+	local data = {}
+	for k, v in pairs(Settings) do data[k] = encodeSetting(v) end
+	local path = CONFIG_FOLDER .. "/" .. (Settings.ConfigName or "default") .. ".json"
+	pcall(function() writefile(path, HttpService:JSONEncode(data)) end)
+	warn("[Config] saved " .. path)
+end
+
+local function LoadConfiguration()
+	if not (readfile and isfile) then return end
+	local path = CONFIG_FOLDER .. "/" .. (Settings.ConfigName or "default") .. ".json"
+	if not isfile(path) then return end
+	local ok, decoded = pcall(function() return HttpService:JSONDecode(readfile(path)) end)
+	if ok and type(decoded) == "table" then
+		for k, v in pairs(decoded) do
+			if Settings[k] ~= nil then Settings[k] = decodeSetting(v, Settings[k]) end
+		end
+		-- Legacy fallback mapping
+		if decoded.HitboxPlayers ~= nil and decoded.HitboxNPCs == nil then
+			Settings.HitboxNPCs = decoded.HitboxPlayers
+		end
+		if decoded.AimTargetPlayers ~= nil and decoded.AimTargetNPCs == nil then
+			Settings.AimTargetNPCs = decoded.AimTargetPlayers
+		end
+		-- Legacy configs may contain both flags; keep Aimlock 1 authoritative.
+		if Settings.AimlockEnabled and Settings.Aimlock2Enabled then
+			Settings.Aimlock2Enabled = false
+		end
+		applyGuiTheme()
+		if Settings.FlyEnabled then task.defer(function() setFly(true) end) end
+		if Settings.AutoChamber or Settings.AutoFireMode then task.defer(scanAllSPHWeapons) end
+		task.defer(updatePlayerHighlights)
+		warn("[Config] loaded " .. path)
+	end
+end
+
+local function ResetTheme()
+	Settings.UITransparency = 0
+	Settings.UIRoundedCorners = false
+	Settings.UICornerRadius = 0
+	Settings.RainbowColor = false
+	Settings.Color = Color3.fromRGB(170, 25, 30)
+	Settings.PlayerHighlightColor = Color3.fromRGB(0, 170, 255)
+	applyGuiTheme()
+end
+
+----------------------------------------------------
+-- Populate UI
+----------------------------------------------------
+-- 1. AIMLOCK Tab
+MakeSection(AimPanel, "Aim Assistance")
+MakeToggle(AimPanel, "Enable Aimlock", "AimlockEnabled", function(on) setAimlockEnabled(1, on) end)
+MakeCycler(AimPanel, "Lock To Part", "AimlockPart", AIMLOCK_PARTS)
+MakeToggle(AimPanel, "Wall Check", "AimlockWallCheck")
+MakeToggle(AimPanel, "Target Closest", "AimTargetClosest")
+MakeSlider(AimPanel, "Aimlock Distance", "AimlockMaxDistance", 0, 5000, 50, " st")
+MakeSlider(AimPanel, "Aimlock Smoothness", "AimlockSmoothness", 1, 20, 1, "")
+MakeSlider(AimPanel, "Prediction", "PredictionFactor", 0, 0.5, 0.01, "")
+MakeSection(AimPanel, "Aim Targets")
+MakeToggle(AimPanel, "Hostile NPCs", "AimTargetNPCs")
+MakeToggle(AimPanel, "Players", "AimTargetPlayers")
+MakeSection(AimPanel, "Field of View")
+MakeToggle(AimPanel, "Show FOV Circle", "ShowFOVCircle")
+MakeSlider(AimPanel, "FOV Radius", "AimlockFOV", 10, 600, 5, " px")
+MakeSection(AimPanel, "Aimlock 2")
+MakeToggle(AimPanel, "Enable Aimlock 2", "Aimlock2Enabled", function(on) setAimlockEnabled(2, on) end)
+MakeCycler(AimPanel, "Aimlock 2 Part", "Aimlock2Part", AIMLOCK_PARTS)
+MakeToggle(AimPanel, "Aimlock 2 Wall Check", "Aimlock2WallCheck")
+MakeSlider(AimPanel, "Aimlock 2 Distance", "Aimlock2MaxDistance", 0, 5000, 50, " st")
+
+-- 2. WEAPONS Tab
+MakeSection(WeaponPanel, "SPH Weapon Modifications")
+MakeToggle(WeaponPanel, "Auto Chamber (Always True)", "AutoChamber", function(on)
+	if on then scanAllSPHWeapons() end
+end)
+MakeToggle(WeaponPanel, "Enforce FireMode", "AutoFireMode", function(on)
+	if on then scanAllSPHWeapons() end
+end)
+MakeSlider(WeaponPanel, "FireMode Value", "FireModeValue", 1, 5, 1, "", function(v)
+	scanAllSPHWeapons()
+end)
+MakeSection(WeaponPanel, "Damage Reductions")
+MakeToggle(WeaponPanel, "Remove Fall Damage", "RemoveFallDamage", function(on)
+	if on then
+		hookFallDamageFolder(StarterPlayer)
+		if LocalPlayer.Character then hookFallDamageFolder(LocalPlayer.Character) end
+	end
+end)
+
+-- 3. MOVEMENT Tab
+MakeSection(MovePanel, "Movement")
+MakeToggle(MovePanel, "Fly", "FlyEnabled", setFly)
+MakeSlider(MovePanel, "Fly Speed", "FlySpeed", 10, 250, 5, "")
+MakeToggle(MovePanel, "Enforce WalkSpeed", "WalkSpeedEnabled")
+MakeSlider(MovePanel, "WalkSpeed", "WalkSpeed", 8, 100, 1, "")
+MakeToggle(MovePanel, "Jump Power", "JumpPowerEnabled")
+MakeSlider(MovePanel, "Jump Power Amount", "JumpPower", 25, 150, 5, "")
+MakeToggle(MovePanel, "Infinite Jump", "InfiniteJumpEnabled")
+MakeToggle(MovePanel, "No Clip", "NoClipEnabled", setNoClip)
+
+-- 4. VISUALS Tab
+MakeSection(VisualsPanel, "Player Highlighting (Chams)")
+MakeToggle(VisualsPanel, "Highlight Players", "HighlightPlayers", function(on)
+	updatePlayerHighlights()
+end)
+MakeSlider(VisualsPanel, "Fill Transparency", "PlayerHighlightFillTransparency", 0, 1, 0.05, "", function()
+	updatePlayerHighlights()
+end)
+MakeSlider(VisualsPanel, "Outline Transparency", "PlayerHighlightOutlineTransparency", 0, 1, 0.05, "", function()
+	updatePlayerHighlights()
+end)
+MakeToggle(VisualsPanel, "Player Team Check", "PlayerTeamCheck")
+MakeColorPicker(VisualsPanel, "Player Highlight Color", "PlayerHighlightColor")
+
+MakeSection(VisualsPanel, "Hostile NPC ESP")
+MakeToggle(VisualsPanel, "Highlight NPCs", "HighlightNPCs")
+MakeToggle(VisualsPanel, "Master ESP", "Enabled")
+MakeToggle(VisualsPanel, "Box", "ShowBox")
+MakeToggle(VisualsPanel, "NPC Name", "ShowName")
+MakeToggle(VisualsPanel, "Distance", "ShowDistance")
+MakeToggle(VisualsPanel, "Tracer Lines", "ShowTracer")
+MakeToggle(VisualsPanel, "Skeleton", "ShowSkeleton")
+MakeCycler(VisualsPanel, "Tracer Origin", "TracerOrigin", TRACER_ORIGINS)
+
+MakeSection(VisualsPanel, "Full Bright")
+MakeToggle(VisualsPanel, "Full Bright", "FullBrightEnabled", setFullBright)
+
+MakeSection(VisualsPanel, "Hitbox Expander")
+MakeToggle(VisualsPanel, "Enable Hitboxes", "HitboxEnabled")
+MakeSlider(VisualsPanel, "Hitbox Size", "HitboxSize", 2, 30, 1, "")
+MakeSlider(VisualsPanel, "Hitbox Transparency", "HitboxTransparency", 0, 1, 0.05, "")
+MakeToggle(VisualsPanel, "Hitbox Hostile NPCs", "HitboxNPCs")
+MakeToggle(VisualsPanel, "Hitbox Players", "HitboxPlayers")
+
+MakeSection(VisualsPanel, "Distance & Appearance")
+MakeSlider(VisualsPanel, "Max Distance", "MaxDistance", 0, 10000, 50, " st")
+MakeSlider(VisualsPanel, "Text Size", "TextSize", 10, 28, 1, "")
+MakeToggle(VisualsPanel, "Rainbow", "RainbowColor")
+MakeColorPicker(VisualsPanel, "Primary Accent Color", "Color")
+
+-- 5. KEYBINDS Tab
+MakeSection(KeybindPanel, "Aimlock")
+MakeKeybind(KeybindPanel, "Aimlock Key", "AimlockKey")
+MakeCycler(KeybindPanel, "Aimlock Mode", "AimlockKeyMode", KEY_MODES)
+MakeSection(KeybindPanel, "Movement / Menu")
+MakeKeybind(KeybindPanel, "Fly Key", "FlyKey")
+MakeCycler(KeybindPanel, "Fly Mode", "FlyKeyMode", KEY_MODES)
+MakeKeybind(KeybindPanel, "Toggle Menu Key", "ToggleKey")
+MakeCycler(KeybindPanel, "Toggle Menu Mode", "ToggleKeyMode", KEY_MODES)
+
+-- 6. UI & THEME Tab
+MakeSection(ThemePanel, "Window Customization")
+MakeSlider(ThemePanel, "Menu Transparency", "UITransparency", 0, 90, 1, "%", applyGuiTheme)
+MakeToggle(ThemePanel, "Rounded Corners", "UIRoundedCorners", function(on)
+	if on and Settings.UICornerRadius == 0 then Settings.UICornerRadius = 10; refreshToggle("UICornerRadius") end
+	applyGuiTheme()
+end)
+MakeSlider(ThemePanel, "Corner Radius", "UICornerRadius", 0, 24, 1, " px", applyGuiTheme)
+
+-- 7. PROFILES Tab
+MakeSection(ProfilePanel, "Configuration Manager")
+MakeTextBox(ProfilePanel, "Config File Name", "ConfigName")
+MakeButton(ProfilePanel, "Save Configuration", SaveConfiguration)
+MakeButton(ProfilePanel, "Load Configuration", LoadConfiguration)
+MakeButton(ProfilePanel, "Reset Flat Theme", ResetTheme)
+MakeSection(ProfilePanel, "Automation")
+MakeToggle(ProfilePanel, "Auto-Save on Close", "AutoSave")
+MakeToggle(ProfilePanel, "Auto-Load on Start", "AutoLoad")
+
+-- 8. INFO Tab
+MakeSection(InfoPanel, "Info")
+MakeInfoCard(InfoPanel, "Version", "2.21")
+MakeInfoCard(InfoPanel, "Plan", planName)
+MakeInfoCard(InfoPanel, "Status", "Active & Undetected")
+MakeSection(InfoPanel, "Development Team")
+MakeCreditCard(InfoPanel, "Lead Developer", "ZMBI3")
+MakeCreditCard(InfoPanel, "Developer", "GhoulzZ")
+
+SwitchTab(AimPanel, AimBtn, AimStroke)
+scanThemeItems(ScreenGui)
+applyGuiTheme()
+if Settings.AutoLoad then task.defer(LoadConfiguration) end
+
+do
+	local lastThemeRainbow, lastThemeHueBucket = nil, nil
+	Runtime:Connect(RunService.RenderStepped, function()
+		local bucket = math.floor(rainbowHue * 180)
+		if Settings.RainbowColor ~= lastThemeRainbow or bucket ~= lastThemeHueBucket then
+			lastThemeRainbow = Settings.RainbowColor
+			lastThemeHueBucket = bucket
+			applyGuiTheme()
+		end
+	end)
+end
+
+----------------------------------------------------
+-- Window drag / minimize / close / menu key
+----------------------------------------------------
+do
+	-- Single table instead of three upvalues: keeps the chunk's active-local
+	-- count under Luau's 200-register compiler limit.
+	local dragState = { dragging = false, start = nil, framePos = nil }
+	TitleBar.InputBegan:Connect(function(i)
+		if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+			dragState.dragging = true
+			dragState.start = i.Position
+			dragState.framePos = MainFrame.Position
+		end
+	end)
+	Runtime:Connect(UserInputService.InputChanged, function(i)
+		if dragState.dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+			local d = i.Position - dragState.start
+			local p = dragState.framePos
+			MainFrame.Position = UDim2.new(p.X.Scale, p.X.Offset + d.X, p.Y.Scale, p.Y.Offset + d.Y)
+		end
+	end)
+	Runtime:Connect(UserInputService.InputEnded, function(i)
+		if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragState.dragging = false end
+	end)
+end
+
+do
+	local minimized = false
+	local savedHeight = MainFrame.Size.Y.Offset
+	MinimizeBtn.MouseButton1Click:Connect(function()
+		minimized = not minimized
+		ContentArea.Visible = not minimized
+		NavBar.Visible = not minimized
+		ResizeHandle.Visible = not minimized
+		if minimized then
+			savedHeight = MainFrame.Size.Y.Offset
+			MainFrame.Size = UDim2.new(0, MainFrame.Size.X.Offset, 0, 50)
+		else
+			MainFrame.Size = UDim2.new(0, MainFrame.Size.X.Offset, 0, savedHeight)
+		end
+	end)
+end
+
+local lastGameMouseIcon = nil
+
+local function enforceMouseFree()
+	-- Also driven by BindToRenderStep (no connection to disconnect), so it has
+	-- to fail closed on its own once the Runtime is down.
+	if not Runtime.alive then return end
+	if not MainFrame or not MainFrame.Parent or not MainFrame.Visible then return end
+
+	if UserInputService.MouseBehavior ~= Enum.MouseBehavior.Default then
+		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+	end
+
+	if not UserInputService.MouseIconEnabled then
+		UserInputService.MouseIconEnabled = true
+	end
+
+	pcall(function()
+		if UserInputService.OverrideMouseIconBehavior ~= Enum.OverrideMouseIconBehavior.ForceShow then
+			UserInputService.OverrideMouseIconBehavior = Enum.OverrideMouseIconBehavior.ForceShow
+		end
+	end)
+
+	pcall(function()
+		local m = LocalPlayer:GetMouse()
+		if m then
+			if m.Icon == "rbxasset://textures/blank.png" or m.Icon == "rbxassetid://0" then
+				m.Icon = ""
+			end
+		end
+		if UserInputService.MouseIcon == "rbxasset://textures/blank.png" or UserInputService.MouseIcon == "rbxassetid://0" then
+			UserInputService.MouseIcon = ""
+		end
+	end)
+end
+
+local function setGuiVisible(v)
+	MainFrame.Visible = v
+	if ModalHelper then
+		ModalHelper.Visible = v
+		ModalHelper.Modal = v
+	end
+
+	if v then
+		pcall(function()
+			local m = LocalPlayer:GetMouse()
+			if m and m.Icon ~= "" and m.Icon ~= "rbxasset://textures/ArrowCursor.png" and m.Icon ~= "rbxasset://textures/Cursors/Gamepad/Pointer.png" then
+				lastGameMouseIcon = m.Icon
+				m.Icon = ""
+			end
+		end)
+		enforceMouseFree()
+	else
+		pcall(function()
+			UserInputService.OverrideMouseIconBehavior = Enum.OverrideMouseIconBehavior.None
+			if lastGameMouseIcon then
+				local m = LocalPlayer:GetMouse()
+				if m then m.Icon = lastGameMouseIcon end
+				lastGameMouseIcon = nil
+			end
+		end)
+		if Settings.AutoSave then SaveConfiguration() end
+	end
+end
+CloseBtn.MouseButton1Click:Connect(function() setGuiVisible(false) end)
+
+-- Keep the cursor available and visible while the menu is open across all render/physics stages.
+RunService:BindToRenderStep("PHETAMINE_MouseFree_Camera", Enum.RenderPriority.Camera.Value + 1, enforceMouseFree)
+RunService:BindToRenderStep("PHETAMINE_MouseFree_Last", Enum.RenderPriority.Last.Value + 100, enforceMouseFree)
+Runtime:Connect(RunService.Heartbeat, enforceMouseFree)
+Runtime:Connect(RunService.RenderStepped, enforceMouseFree)
+Runtime:Connect(RunService.Stepped, enforceMouseFree)
+
+Runtime:Connect(UserInputService.InputBegan, function(input, gpe)
+	if not Runtime.alive or not MainFrame or not MainFrame.Parent then return end
+	if MainFrame.Visible and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.MouseMovement) then
+		enforceMouseFree()
+	end
+	if gpe then return end
+	if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == Settings.ToggleKey then
+		if Settings.ToggleKeyMode == "Hold" then
+			setGuiVisible(true)
+		else
+			setGuiVisible(not MainFrame.Visible)
+		end
+	end
+end)
+
+Runtime:Connect(UserInputService.InputChanged, function(input)
+	if not Runtime.alive or not MainFrame or not MainFrame.Parent then return end
+	if MainFrame.Visible and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.MouseButton2) then
+		enforceMouseFree()
+	end
+end)
+
+Runtime:Connect(UserInputService.InputEnded, function(input)
+	if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == Settings.ToggleKey and Settings.ToggleKeyMode == "Hold" then
+		setGuiVisible(false)
+	end
+end)
